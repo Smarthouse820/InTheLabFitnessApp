@@ -996,8 +996,12 @@ function effectiveRepRange(ex, state) {
 function suggestRepShift(oldWeight, newWeight, repLow, repHigh) {
   if (!oldWeight || !newWeight || oldWeight <= 0) return null;
   const pct = (newWeight - oldWeight) / oldWeight;
-  const shift = Math.round(pct / 0.025);
-  if (shift === 0) return null;
+  const rawShift = Math.round(pct / 0.025);
+  if (rawShift === 0) return null;
+  // Cap how far a single change can shift the range — beyond this, the linear "2.5% per rep"
+  // heuristic stops being a realistic prescription and it's more honest to just log actual
+  // performance and let normal week-to-week progression take over from there.
+  const shift = Math.max(-6, Math.min(6, rawShift));
   const newLow = Math.max(1, repLow - shift);
   const newHigh = Math.max(newLow + 1, repHigh - shift);
   return { pct: Math.round(pct * 100), shift: shift, repLow: newLow, repHigh: newHigh };
@@ -1861,7 +1865,6 @@ function WorkoutsTab(props) {
 function SwapForm(props) {
   const [name, setName] = useState(props.current.nameOverride || "");
   const [weight, setWeight] = useState("");
-  const [applyShift, setApplyShift] = useState(true);
   const baseRange = effectiveRepRange(props.exercise, props.current);
   const suggestion = (!props.exercise.bodyweight && weight !== "" && !isNaN(Number(weight)) && Number(weight) > 0)
     ? suggestRepShift(props.current.weight, Number(weight), baseRange.repLow, baseRange.repHigh)
@@ -1875,16 +1878,13 @@ function SwapForm(props) {
       "Weight/rep targets carry over from the original exercise unless you set a new weight — since a different machine may not load the same, log what actually feels equivalent and progression will adjust from there."),
     suggestion && h("div", { className: "rate-panel", style: { marginTop: 8 } },
       h("p", null,
-        "That's a " + (suggestion.pct > 0 ? "+" : "") + suggestion.pct + "% weight change — consider shifting your rep target from " +
-        baseRange.repLow + "–" + baseRange.repHigh + " to " + suggestion.repLow + "–" + suggestion.repHigh + "."),
-      h("button", {
-        className: "diff-btn" + (applyShift ? " right" : ""), onClick: function () { setApplyShift(!applyShift); },
-      }, applyShift ? "✓ Will apply new rep range" : "Apply new rep range")
+        "That's a " + (suggestion.pct > 0 ? "+" : "") + suggestion.pct + "% weight change — your rep target will shift from " +
+        baseRange.repLow + "–" + baseRange.repHigh + " to " + suggestion.repLow + "–" + suggestion.repHigh + " when you save.")
     ),
     h("div", { style: { display: "flex", gap: "8px", marginTop: 8 } },
       h("button", {
         className: "swap-save-btn", style: { flex: 1 },
-        onClick: function () { props.onSave(name, weight, (suggestion && applyShift) ? { repLow: suggestion.repLow, repHigh: suggestion.repHigh } : null); },
+        onClick: function () { props.onSave(name, weight, suggestion ? { repLow: suggestion.repLow, repHigh: suggestion.repHigh } : null); },
       }, "Save swap"),
       props.current.nameOverride && h("button", {
         className: "swap-save-btn", style: { flex: 1, background: "#898989" },
