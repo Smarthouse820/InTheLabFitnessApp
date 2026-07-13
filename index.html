@@ -194,6 +194,7 @@
   .milestone-top .phase { font-size: 12px; color: #737373; }
   .milestone-targets { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; font-size: 12px; color: #737373; margin-bottom: 8px; }
   .milestone-inputs { display: flex; gap: 8px; min-width: 0; }
+  .actual-fat-row { font-size: 12px; color: #a3a3a3; margin-top: 8px; }
   .milestone-inputs input { flex: 1; min-width: 0; width: 0; background: #0a0a0a; border: 1px solid #404040; border-radius: 6px; padding: 6px 4px; font-size: 14px; color: #f5f5f5; text-align: center; -moz-appearance: textfield; }
   .milestone-inputs input::-webkit-inner-spin-button, .milestone-inputs input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 
@@ -2518,6 +2519,18 @@ function SleepSection(props) {
 }
 
 function MilestonesTab(props) {
+  function actualFatForWeek(week) {
+    const a = props.actuals[week];
+    if (!a || a.weight == null || a.weight === "" || a.bf == null || a.bf === "") return null;
+    return Number(a.weight) * (Number(a.bf) / 100);
+  }
+  function previousActualFat(week) {
+    for (let w = week - 1; w >= 1; w--) {
+      const f = actualFatForWeek(w);
+      if (f != null) return f;
+    }
+    return null;
+  }
   if (!props.hasTargets) {
     const weeksToShow = Math.max(15, props.currentWeek + 1);
     const weeks = [];
@@ -2529,6 +2542,9 @@ function MilestonesTab(props) {
         weeks.map(function (w) {
           const isCurrent = w === props.currentWeek;
           const actual = props.actuals[w] || {};
+          const actualFat = actualFatForWeek(w);
+          const prevFat = actualFat != null ? previousActualFat(w) : null;
+          const fatDelta = actualFat != null && prevFat != null ? actualFat - prevFat : null;
           return h("div", { key: w, className: "milestone-card" + (isCurrent ? " current" : "") },
             h("div", { className: "milestone-top" }, h("span", { className: "wk" }, "Week " + w)),
             h("div", { className: "milestone-inputs" },
@@ -2542,6 +2558,11 @@ function MilestonesTab(props) {
                 value: actual.bf != null ? actual.bf : "",
                 onChange: function (e) { props.setActual(w, "bf", e.target.value); },
               })
+            ),
+            actualFat != null && h("div", { className: "actual-fat-row" },
+              "Actual fat mass: " + Math.round(actualFat * 10) / 10 + " lb",
+              fatDelta != null && h("span", { style: { color: fatDelta <= 0 ? "#4eba6f" : "#f0b429", marginLeft: 6 } },
+                (fatDelta <= 0 ? "▼" : "▲") + Math.abs(Math.round(fatDelta * 10) / 10) + " lb vs last check-in")
             )
           );
         })
@@ -2552,6 +2573,7 @@ function MilestonesTab(props) {
   const milestones = computeAdjustedMilestones(props.actuals, baseMilestones);
   const wasAdjusted = milestones.some(function (m) { return m.adjusted; });
   const totalWeeks = baseMilestones[baseMilestones.length - 1].week;
+
   return h("div", null,
     h("h2", { className: "section-title" }, props.customMilestones ? (totalWeeks + "-Week Milestone Tracker") : "15-Week Milestone Tracker"),
     h("p", { className: "section-sub" }, props.goalLine || "Enter actuals as you go."),
@@ -2561,6 +2583,9 @@ function MilestonesTab(props) {
       milestones.map(function (m) {
         const isCurrent = m.week === props.currentWeek;
         const actual = props.actuals[m.week] || {};
+        const actualFat = actualFatForWeek(m.week);
+        const prevFat = actualFat != null ? previousActualFat(m.week) : null;
+        const fatDelta = actualFat != null && prevFat != null ? actualFat - prevFat : null;
         return h("div", { key: m.week, className: "milestone-card" + (isCurrent ? " current" : "") },
           h("div", { className: "milestone-top" },
             h("span", { className: "wk" }, "Week " + m.week, m.deload && h("span", null, "· Deload" + (m.goal ? " / Goal" : ""))),
@@ -2582,6 +2607,11 @@ function MilestonesTab(props) {
               value: actual.bf != null ? actual.bf : "",
               onChange: function (e) { props.setActual(m.week, "bf", e.target.value); },
             })
+          ),
+          actualFat != null && h("div", { className: "actual-fat-row" },
+            "Actual fat mass: " + Math.round(actualFat * 10) / 10 + " lb",
+            fatDelta != null && h("span", { style: { color: fatDelta <= 0 ? "#4eba6f" : "#f0b429", marginLeft: 6 } },
+              (fatDelta <= 0 ? "▼" : "▲") + Math.abs(Math.round(fatDelta * 10) / 10) + " lb vs last check-in")
           )
         );
       })
