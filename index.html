@@ -2071,7 +2071,12 @@ function WorkoutsTab(props) {
                       next[ex.id] = !next[ex.id];
                       setHistoryOpen(next);
                     },
-                  }, isHistoryOpen ? "Hide history" : "History")
+                  }, isHistoryOpen ? "Hide history" : "History"),
+                  h("a", {
+                    className: "ex-action-btn", target: "_blank", rel: "noopener noreferrer",
+                    style: { textAlign: "center", textDecoration: "none", display: "block" },
+                    href: "https://www.youtube.com/results?search_query=" + encodeURIComponent(ex.name + " exercise form"),
+                  }, "Watch Demo")
                 ),
                 isHistoryOpen && h(ExerciseHistory, { exercise: ex, logs: props.data.logs, currentWeek: props.data.currentWeek, ratings: props.data.exerciseDifficulty, color: props.color }),
                 h(ExerciseNotes, { exerciseId: ex.id, notes: state.notes || "", onSave: props.updateExerciseNote }),
