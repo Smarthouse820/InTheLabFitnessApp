@@ -130,6 +130,9 @@
   .set-input { width: 60px; background: #171717; border: 1px solid #404040; border-radius: 6px; padding: 4px 8px;
     font-size: 14px; color: #f5f5f5; }
   .set-target { font-size: 12px; color: #525252; }
+  .exercise-notes-input { width: 100%; background: #171717; border: 1px solid #262626; border-radius: 8px;
+    color: #f5f5f5; font-size: 13px; padding: 8px 10px; font-family: inherit; resize: vertical; }
+  .exercise-notes-input::placeholder { color: #525252; }
   .diff-row { display: flex; gap: 6px; }
   .diff-btn { flex: 1; font-size: 12px; padding: 6px 0; border-radius: 6px; border: 1px solid #262626;
     background: #171717; color: #737373; cursor: pointer; }
@@ -330,18 +333,18 @@ const MEALS_CUTTING = {
   1: [
     { id: "m1", time: "4:00 AM", name: "Meal 1", food: "1½ scoops whey + ½ cup dry oats + 7g peanut butter", cal: 329, p: 45, c: 25, f: 6 },
     { id: "iw", time: "5:45–7:00 AM", name: "Intra-Workout", food: "40g protein isolate + ½ scoop Cluster Dextrin + electrolytes", cal: 220, p: 40, c: 15, f: 0.5 },
-    { id: "m2", time: "7:30 AM", name: "Meal 2", food: "6.1oz chicken breast + 153g banana", cal: 414, p: 55, c: 35, f: 6 },
+    { id: "m2", time: "7:30 AM", name: "Meal 2", food: "6.8oz chicken breast + 153g banana", cal: 445, p: 61, c: 35, f: 7 },
     { id: "m3", time: "12:00 PM", name: "Meal 3", food: "6.7oz chicken breast + 105g brown rice + 100g broccoli + 3g peanut butter", cal: 498, p: 65, c: 35, f: 10 },
     { id: "snack", time: "1:30 PM", name: "Snack", food: "1 SimplyFuel protein ball", cal: 95, p: 4, c: 12, f: 4.5 },
-    { id: "m4", time: "3:00 PM", name: "Meal 4", food: "12.9oz lean beef (93/7) + 64g low-carb tortilla + 15g peanut butter", cal: 795, p: 91, c: 21, f: 43 },
+    { id: "m4", time: "3:00 PM", name: "Meal 4", food: "7.9oz lean beef (93/7) + 64g low-carb tortilla + 39g peanut butter + 1 scoop whey protein", cal: 767, p: 91, c: 26, f: 42 },
   ],
   2: [
     { id: "m1", time: "4:00 AM", name: "Meal 1", food: "1½ scoops whey + 28g dry Cream of Rice + 12g peanut butter", cal: 332, p: 45, c: 25, f: 6 },
     { id: "iw", time: "5:45–7:00 AM", name: "Intra-Workout", food: "40g protein isolate + ½ scoop Cluster Dextrin + electrolytes", cal: 220, p: 40, c: 15, f: 0.5 },
     { id: "m2", time: "7:30 AM", name: "Meal 2", food: "6.1oz turkey breast + 145g banana + 8g peanut butter", cal: 406, p: 55, c: 35, f: 6 },
-    { id: "m3", time: "12:00 PM", name: "Meal 3", food: "6.5oz chicken breast + 133g cooked quinoa + 100g green beans", cal: 506, p: 65, c: 35, f: 10 },
+    { id: "m3", time: "12:00 PM", name: "Meal 3", food: "7.2oz chicken breast + 133g cooked quinoa + 100g green beans", cal: 537, p: 71, c: 35, f: 11 },
     { id: "snack", time: "1:30 PM", name: "Snack", food: "1 SimplyFuel protein ball", cal: 95, p: 4, c: 12, f: 4.5 },
-    { id: "m4", time: "3:00 PM", name: "Meal 4", food: "12.9oz lean beef (93/7) + 64g low-carb tortilla + 15g peanut butter", cal: 795, p: 91, c: 21, f: 43 },
+    { id: "m4", time: "3:00 PM", name: "Meal 4", food: "7.9oz lean beef (93/7) + 64g low-carb tortilla + 39g peanut butter + 1 scoop whey protein", cal: 767, p: 91, c: 26, f: 42 },
   ],
   3: [
     { id: "m1", time: "4:00 AM", name: "Meal 1", food: "12.2oz egg whites + ⅓ cup dry oats + 6g peanut butter", cal: 341, p: 45, c: 25, f: 6 },
@@ -354,10 +357,10 @@ const MEALS_CUTTING = {
   4: [
     { id: "m1", time: "4:00 AM", name: "Meal 1", food: "12.4oz egg whites + 31g Ezekiel bread + 9g peanut butter + 50g berries", cal: 339, p: 45, c: 25, f: 6 },
     { id: "iw", time: "5:45–7:00 AM", name: "Intra-Workout", food: "40g protein isolate + ½ scoop Cluster Dextrin + electrolytes", cal: 220, p: 40, c: 15, f: 0.5 },
-    { id: "m2", time: "7:30 AM", name: "Meal 2", food: "5.9oz chicken breast + 126g white rice", cal: 436, p: 55, c: 35, f: 6 },
+    { id: "m2", time: "7:30 AM", name: "Meal 2", food: "6.6oz chicken breast + 126g white rice", cal: 467, p: 61, c: 35, f: 7 },
     { id: "m3", time: "12:00 PM", name: "Meal 3", food: "8.4oz pork tenderloin + 125g potato + 100g carrots", cal: 501, p: 65, c: 35, f: 10 },
     { id: "snack", time: "1:30 PM", name: "Snack", food: "1 SimplyFuel protein ball", cal: 95, p: 4, c: 12, f: 4.5 },
-    { id: "m4", time: "3:00 PM", name: "Meal 4", food: "13.2oz ground turkey (93/7) + 54g low-carb tortilla + 29g peanut butter", cal: 799, p: 91, c: 21, f: 43 },
+    { id: "m4", time: "3:00 PM", name: "Meal 4", food: "8.2oz ground turkey (93/7) + 54g low-carb tortilla + 54.5g peanut butter + 1 scoop whey protein", cal: 779, p: 92, c: 26, f: 43 },
   ],
 };
 
@@ -1019,7 +1022,7 @@ function suggestRepShift(oldWeight, newWeight, repLow, repHigh) {
 function baseExerciseState(exercises) {
   const state = {};
   DAYS.forEach((d) => exercises[d].exercises.forEach((ex) => {
-    state[ex.id] = { weight: ex.weight, repsTarget: ex.repLow, nameOverride: null };
+    state[ex.id] = { weight: ex.weight, repsTarget: ex.repLow, nameOverride: null, notes: "" };
   }));
   return state;
 }
@@ -1513,6 +1516,13 @@ function App() {
     saveProgram({ exerciseState: newState });
   }
 
+  function updateExerciseNote(exerciseId, text) {
+    const cur = prog.exerciseState[exerciseId] || {};
+    const newState = Object.assign({}, prog.exerciseState);
+    newState[exerciseId] = Object.assign({}, cur, { notes: text });
+    saveProgram({ exerciseState: newState });
+  }
+
   function toggleLikedFood(name) {
     const cur = data.likedFoods || [];
     const next = cur.indexOf(name) !== -1 ? cur.filter(function (n) { return n !== name; }) : cur.concat([name]);
@@ -1623,7 +1633,7 @@ function App() {
             tab === "workouts" && h(WorkoutsTab, {
               selectedDay: selectedDay, setSelectedDay: setSelectedDay, data: prog, exercises: def.exercises, isDeloadWeek: isDeloadWeek,
               expanded: expanded, setExpanded: setExpanded, logSet: logSet, completeDay: completeDay,
-              toggleSkip: toggleSkip, setSwap: setSwap, clearSwap: clearSwap, undoCompleteWeek: undoCompleteWeek,
+              toggleSkip: toggleSkip, setSwap: setSwap, clearSwap: clearSwap, undoCompleteWeek: undoCompleteWeek, updateExerciseNote: updateExerciseNote,
               setExerciseDifficulty: setExerciseDifficulty, color: def.color,
               deloadRecommendation: prog.deloadRecommendation, acceptDeloadRecommendation: acceptDeloadRecommendation,
               dismissDeloadRecommendation: dismissDeloadRecommendation,
@@ -1809,6 +1819,7 @@ function WorkoutsTab(props) {
                   }, isHistoryOpen ? "Hide history" : "History")
                 ),
                 isHistoryOpen && h(ExerciseHistory, { exercise: ex, logs: props.data.logs, currentWeek: props.data.currentWeek, ratings: props.data.exerciseDifficulty, color: props.color }),
+                h(ExerciseNotes, { exerciseId: ex.id, notes: state.notes || "", onSave: props.updateExerciseNote }),
                 isSkipped
                   ? h("div", { className: "skip-banner" },
                       h("span", null, "Marked skipped for this week — won't affect next week's targets."),
@@ -1901,6 +1912,30 @@ function SwapForm(props) {
         onClick: function () { props.onClear(); setName(""); },
       }, "Revert to original")
     )
+  );
+}
+
+function ExerciseNotes(props) {
+  const [text, setText] = useState(props.notes);
+  const prevNotes = useRef(props.notes);
+  useEffect(function () {
+    // If the note changes from outside this component (e.g. an import, or a reset), follow it —
+    // same staleness fix already applied to the per-set weight input earlier.
+    if (props.notes !== prevNotes.current) {
+      setText(props.notes);
+      prevNotes.current = props.notes;
+    }
+  }, [props.notes]);
+  return h("div", { style: { marginTop: 8, marginBottom: 8 } },
+    h("label", { style: { fontSize: 11, color: "#737373", display: "block", marginBottom: 4 } }, "Notes (carries over week to week)"),
+    h("textarea", {
+      value: text,
+      onChange: function (e) { setText(e.target.value); },
+      onBlur: function () { props.onSave(props.exerciseId, text); },
+      placeholder: "e.g. seat height, grip width, form cues...",
+      className: "exercise-notes-input",
+      rows: 2,
+    })
   );
 }
 
