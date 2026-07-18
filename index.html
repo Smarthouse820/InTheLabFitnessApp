@@ -2009,10 +2009,13 @@ function App() {
     save(Object.assign({}, data, { supplementList: data.supplementList.filter(function (s) { return s.id !== id; }) }));
   }
   function toggleSupplementLog(id) {
-    const key = todayKey();
-    const todayLog = Object.assign({}, data.supplementLogs[key] || {});
-    todayLog[id] = !todayLog[id];
-    const newLogs = Object.assign({}, data.supplementLogs, { [key]: todayLog });
+    // Keyed by whichever day is currently being viewed (matching how the checked-state is read
+    // elsewhere), not hardcoded to today — otherwise checking a box while viewing a different day
+    // would silently write into today's log instead of the day actually on screen.
+    const key = nutritionSelectedDate;
+    const dayLog = Object.assign({}, data.supplementLogs[key] || {});
+    dayLog[id] = !dayLog[id];
+    const newLogs = Object.assign({}, data.supplementLogs, { [key]: dayLog });
     save(Object.assign({}, data, { supplementLogs: newLogs }));
   }
 
