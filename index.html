@@ -155,13 +155,13 @@
 
   .navbar { position: fixed; bottom: 0; left: 0; right: 0; background: #171717; border-top: 1px solid #262626;
     display: flex; justify-content: space-around; padding: 8px 0; max-width: 32rem; margin: 0 auto; }
-  .rest-timer-bar { position: fixed; bottom: 64px; left: 50%; transform: translateX(-50%); width: calc(100% - 24px);
-    max-width: calc(32rem - 24px); background: #1d4ed8; color: #fff; border-radius: 12px; padding: 10px 14px;
-    display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 14px; z-index: 40;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.5); }
-  .rest-timer-bar .rest-time { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 18px; }
-  .rest-timer-bar button { background: rgba(255,255,255,0.15); border: none; color: #fff; border-radius: 8px;
-    padding: 6px 12px; font-size: 12px; cursor: pointer; }
+  .rest-timer-bar { position: fixed; bottom: 64px; left: 50%; transform: translateX(-50%); width: calc(100% - 32px);
+    max-width: calc(32rem - 32px); background: #1d4ed8; color: #fff; border-radius: 10px; padding: 8px 12px;
+    display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; z-index: 40;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.4); }
+  .rest-timer-bar .rest-time { font-variant-numeric: tabular-nums; letter-spacing: normal; font-weight: 700; font-size: 16px; }
+  .rest-timer-bar button { background: rgba(255,255,255,0.15); border: none; color: #fff; border-radius: 6px;
+    padding: 5px 10px; font-size: 12px; cursor: pointer; }
   .nav-btn { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 12px;
     border-radius: 8px; font-size: 11px; background: none; border: none; color: #737373; cursor: pointer; }
   .nav-btn.active { color: #3d97d3; }
@@ -2240,7 +2240,7 @@ function App() {
               deloadRecommendation: prog.deloadRecommendation, acceptDeloadRecommendation: acceptDeloadRecommendation,
               dismissDeloadRecommendation: dismissDeloadRecommendation, readinessSignal: readinessSignal,
               restTimerSettings: data.restTimerSettings, updateRestTimerSettings: updateRestTimerSettings,
-              startRestTimer: startRestTimer,
+              startRestTimer: startRestTimer, skipRestTimer: skipRestTimer,
             }),
             tab === "nutrition" && h(NutritionTab, {
               nToday: nToday, setMealStatus: setMealStatus, clearMealStatus: clearMealStatus, macroProgress: macroProgress, meals: meals, mealTotals: activeMealTotals,
@@ -2449,10 +2449,16 @@ function WorkoutsTab(props) {
                 onClear: function () { props.clearSwap(ex.id); },
               }),
               Array.from({ length: setsToday }).map(function (_, i) {
+                const isLastSet = i === setsToday - 1;
                 return h(SetLogger, {
                   key: props.data.currentWeek + "-" + i, setIdx: i, exercise: ex, state: state,
                   existing: logsForEx[i], onLog: function (reps, weight) { props.logSet(ex.id, i, reps, weight); },
-                  onSetCommitted: function () { if (props.startRestTimer) props.startRestTimer(displayName); },
+                  // On the final set there's nothing left to rest for within this exercise — clear any
+                  // countdown still running from the previous set rather than starting a new one.
+                  onSetCommitted: function () {
+                    if (isLastSet) { if (props.skipRestTimer) props.skipRestTimer(); }
+                    else if (props.startRestTimer) props.startRestTimer(displayName);
+                  },
                 });
               }),
               readyToRate && h("div", { className: "rate-panel" },
@@ -2515,7 +2521,7 @@ function WorkoutsTab(props) {
         h("button", { className: "ex-action-btn", onClick: props.dismissDeloadRecommendation }, "No, train normally")
       )
     ),
-    h("div", { className: "panel", style: { marginBottom: 16, padding: "10px 14px" } },
+    h("div", { className: "panel", style: { marginBottom: 16, padding: "10px 14px", border: "2px solid #3d97d3" } },
       h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
         h("span", { style: { fontSize: 13 } }, "Rest timer after each set"),
         h("button", {
@@ -3180,16 +3186,25 @@ function SupplementSection(props) {
   }, [allChecked]);
   if (supplements.length === 0) return null;
   if (allChecked && !expanded) {
-    return h("div", {
-      style: { marginTop: props.compact ? 8 : 0, marginBottom: props.compact ? 0 : 16, fontSize: 12, color: "#4eba6f", cursor: "pointer", padding: "2px 0" },
-      onClick: function () { setExpanded(true); },
-    }, "✓ " + (props.title === "Also take" ? "Supplements taken" : props.title + " — done") + " (" + supplements.length + ")");
+    return h("div", { style: { marginTop: props.compact ? 8 : 0, marginBottom: props.compact ? 0 : 16 } },
+      h("button", {
+        className: "ex-action-btn", style: { width: "100%", textAlign: "left" },
+        onClick: function () { setExpanded(true); },
+      }, "✓ " + (props.title === "Also take" ? "Supplements taken" : props.title + " — done") + " (" + supplements.length + ")")
+    );
   }
+  // Checked items sink to the bottom while the list is still open, so whatever's left to take
+  // stays at the top rather than mixed in with items already handled.
+  const ordered = supplements.slice().sort(function (a, b) {
+    const aChecked = !!props.logsToday[a.id], bChecked = !!props.logsToday[b.id];
+    if (aChecked === bChecked) return 0;
+    return aChecked ? 1 : -1;
+  });
   return h("div", { style: { marginTop: props.compact ? 8 : 0, marginBottom: props.compact ? 0 : 16 } },
     props.compact
       ? h("div", { style: { fontSize: 11, color: "#737373", marginBottom: 4 } }, props.title + ":")
       : h("div", { className: "food-cat-title" }, props.title),
-    supplements.map(function (s) {
+    ordered.map(function (s) {
       const checked = !!props.logsToday[s.id];
       return h("label", { key: s.id, style: { display: "flex", alignItems: "center", gap: 8, fontSize: 13, padding: "4px 0" } },
         h("input", { type: "checkbox", checked: checked, disabled: props.disabled, onChange: function () { props.toggleLog(s.id); } }),
@@ -3279,32 +3294,7 @@ function SupplementManager(props) {
   );
 }
 
-// Wraps the "Also take" checklist for one meal. Once every supplement tagged to that meal is
-// checked, collapses to a single tap-to-expand line instead of the full checklist — the meal card
-// falls back to looking like it did before any supplements existed. A manual "Minimize" link lets
-// it be collapsed again after re-expanding (e.g. to fix a mis-tap) without waiting for a re-render.
-function MealSupplementBlock(props) {
-  if (!props.supplements || props.supplements.length === 0) return null;
-  const allChecked = props.supplements.every(function (s) { return !!props.logsToday[s.id]; });
-  if (allChecked && !props.expanded) {
-    return h("div", { style: { marginTop: 8 } },
-      h("button", {
-        className: "ex-action-btn", style: { fontSize: 11, padding: "4px 8px" },
-        onClick: props.onToggleExpand,
-      }, "✓ Supplements taken — tap to view")
-    );
-  }
-  return h("div", { style: { marginTop: 8 } },
-    h(SupplementSection, {
-      title: "Also take", supplements: props.supplements, logsToday: props.logsToday,
-      toggleLog: props.toggleLog, disabled: props.disabled, compact: true,
-    }),
-    allChecked && h("button", {
-      className: "ex-action-btn", style: { fontSize: 11, padding: "2px 8px", marginTop: 2 },
-      onClick: props.onToggleExpand,
-    }, "▴ Minimize")
-  );
-}
+
 
 // Renders one time-scheduled standalone supplement as its own card, styled like a meal card so it
 // sits visually consistent with the meals it's interleaved among on the day's timeline.
@@ -3332,10 +3322,6 @@ function NutritionTab(props) {
   const todayOffset = 0, todayIdx = todayDayIdx();
   const isFutureWeek = props.weekOffset < 0;
   const isFutureDay = isFutureWeek || (props.weekOffset === 0 && props.dayIdx > todayIdx);
-  const [suppExpanded, setSuppExpanded] = useState({}); // per-meal-id manual expand override
-  function toggleSuppExpanded(mealId) {
-    setSuppExpanded(Object.assign({}, suppExpanded, { [mealId]: !suppExpanded[mealId] }));
-  }
 
   // Timed standalone supplements get slotted into the day's timeline alongside meals, sorted by
   // clock time; ones with no time stay in a separate Unscheduled section (rendered above). Building
@@ -3445,10 +3431,11 @@ function NutritionTab(props) {
                 }, opt.label);
               })
             ),
-            h(MealSupplementBlock, {
+            h(SupplementSection, {
+              title: "Also take",
               supplements: props.supplementList.filter(function (s) { return s.timing === m.id; }),
               logsToday: props.supplementLogsToday, toggleLog: props.toggleSupplementLog, disabled: isFutureDay,
-              expanded: !!suppExpanded[m.id], onToggleExpand: function () { toggleSuppExpanded(m.id); },
+              compact: true,
             })
           )
         );
