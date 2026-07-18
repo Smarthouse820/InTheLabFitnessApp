@@ -2553,7 +2553,7 @@ function WorkoutsTab(props) {
     ),
     h("div", { className: "panel", style: { marginBottom: 12, padding: "10px 14px", background: "#0a0a0a", border: "1px solid #404040", borderRadius: 8 } },
       h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
-        h("span", { style: { fontSize: 13 } }, "Rest timer after each set"),
+        h("span", { style: { fontSize: 13 } }, "Rest Timer After Each Set"),
         h("div", { style: { display: "flex", gap: 6 } },
           h("button", {
             className: "ex-action-btn",
@@ -2729,12 +2729,12 @@ function AdaptiveTDEESection(props) {
       "Optional, separate from the weekly check-in above — logging this daily (even without a BF% measurement) lets the app infer whether your calorie target still matches reality."),
     h("div", { className: "swap-form-row", style: { marginBottom: 12 } },
       h("input", {
-        type: "number", inputMode: "decimal", placeholder: todayLogged != null ? "Today: " + todayLogged + " lb" : "Today's weight",
+        type: "number", inputMode: "decimal", placeholder: todayLogged != null ? "Today: " + todayLogged + " lb" : "Today's Weight",
         value: weightInput, onChange: function (e) { setWeightInput(e.target.value); },
-        className: "search-input",
+        className: "search-input", style: { flex: "0 0 40%" },
       }),
       h("button", {
-        className: "swap-save-btn", style: { flex: "0 0 auto" },
+        className: "swap-save-btn", style: { flex: 1 },
         onClick: function () { if (weightInput !== "") { props.logDailyWeight(Number(weightInput)); setWeightInput(""); } },
       }, "Log")
     ),
@@ -3192,7 +3192,9 @@ function SupplementSection(props) {
     prevAllChecked.current = allChecked;
   }, [allChecked]);
   if (supplements.length === 0) return null;
-  if (allChecked && !expanded) {
+  // noCollapse: used when a parent container (e.g. a meal card) already collapses itself once its
+  // supplements are done — the checklist just stays a plain sorted list, no second collapse layer.
+  if (allChecked && !expanded && !props.noCollapse) {
     return h("div", { style: { marginTop: props.compact ? 8 : 0, marginBottom: props.compact ? 0 : 16 } },
       h("button", {
         className: "ex-action-btn", style: { width: "100%", textAlign: "left" },
@@ -3232,6 +3234,7 @@ function SupplementManager(props) {
   const [time, setTime] = useState("");
   const [nutrientRows, setNutrientRows] = useState([{ nutrient: "", amount: "" }]);
   const [listOpen, setListOpen] = useState(false); // entered list starts minimized — it can get long
+  const [boxExpanded, setBoxExpanded] = useState(true);
 
   function updateRow(i, field, value) {
     const next = nutrientRows.slice();
@@ -3250,54 +3253,62 @@ function SupplementManager(props) {
   const TIMING_LABELS = { m1: "With Meal 1", m2: "With Meal 2", m3: "With Meal 3", m4: "With Meal 4", standalone: "Standalone (pre-workout, bedtime, etc.)" };
 
   return h("div", { className: "panel", style: { marginTop: 16, marginBottom: 16 } },
-    h("h3", null, "Supplements"),
-    props.supplementList.length > 0 && h("div", { style: { marginBottom: 16 } },
-      h("button", {
-        className: "ex-action-btn", style: { width: "100%", textAlign: "left", border: "2px solid #3d97d3" },
-        onClick: function () { setListOpen(!listOpen); },
-      }, (listOpen ? "▾ " : "▸ ") + "Your supplements (" + props.supplementList.length + ")"),
-      listOpen && props.supplementList.map(function (s) {
-        return h("div", { key: s.id, style: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid #262626" } },
-          h("div", null,
-            h("div", { style: { fontSize: 13 } }, s.name),
-            h("div", { style: { fontSize: 11, color: "#737373" } },
-              (s.timing === "standalone" && s.time ? "Standalone · " + formatTimeHM(s.time) : TIMING_LABELS[s.timing]) +
-              (s.nutrients.length ? " · " + s.nutrients.map(function (n) { return (NUTRIENT_UL[n.nutrient] ? NUTRIENT_UL[n.nutrient].label : n.nutrient) + " " + n.amount + (NUTRIENT_UL[n.nutrient] ? NUTRIENT_UL[n.nutrient].unit : ""); }).join(", ") : ""))
-          ),
-          h("button", { className: "ex-action-btn", style: { flex: "0 0 auto" }, onClick: function () { props.removeSupplement(s.id); } }, "Remove")
-        );
-      })
-    ),
-    h("p", { className: "food-cat-title" }, "Add a Supplement"),
-    h("input", { className: "search-input", placeholder: "Name (e.g. Vitamin D3 5000IU — Sports Research)", value: name, onChange: function (e) { setName(e.target.value); } }),
-    h("select", {
-      className: "search-input", style: { marginTop: 8 }, value: timing,
-      onChange: function (e) { setTiming(e.target.value); },
+    h("button", {
+      onClick: function () { setBoxExpanded(!boxExpanded); },
+      style: { display: "flex", width: "100%", justifyContent: "space-between", alignItems: "center", background: "none", border: "none", padding: 0, color: "inherit", cursor: "pointer", marginBottom: boxExpanded ? 12 : 0 },
     },
-      Object.keys(TIMING_LABELS).map(function (k) { return h("option", { key: k, value: k }, TIMING_LABELS[k]); })
+      h("h3", { style: { margin: 0 } }, "Supplements"),
+      boxExpanded ? h(ChevronUp, { size: 16 }) : h(ChevronDown, { size: 16 })
     ),
-    timing === "standalone" && h("div", { style: { marginTop: 8 } },
-      h("p", { style: { fontSize: "11px", color: "#737373", margin: "0 0 4px" } },
-        "Optional — give it a time to slot it into the day's plan alongside your meals. Leave blank for as-needed items (they'll show in an Unscheduled section)."),
-      h("input", { type: "time", className: "search-input", value: time, onChange: function (e) { setTime(e.target.value); } })
-    ),
-    h("p", { style: { fontSize: "11px", color: "#737373", marginTop: 8 } },
-      "Optional — tag which nutrients this provides, so overlaps with your other supplements can be flagged automatically:"),
-    nutrientRows.map(function (row, i) {
-      return h("div", { key: i, style: { display: "flex", gap: 6, marginTop: 6 } },
-        h("select", {
-          className: "search-input", value: row.nutrient,
-          onChange: function (e) { updateRow(i, "nutrient", e.target.value); },
-        },
-          h("option", { value: "" }, "Nutrient..."),
-          NUTRIENT_OPTIONS.map(function (n) { return h("option", { key: n.id, value: n.id }, n.label + " (" + n.unit + ")"); })
-        ),
-        h("input", { type: "number", className: "search-input", placeholder: "Amount", value: row.amount, onChange: function (e) { updateRow(i, "amount", e.target.value); } }),
-        nutrientRows.length > 1 && h("button", { className: "ex-action-btn", style: { flex: "0 0 auto" }, onClick: function () { removeRow(i); } }, "×")
-      );
-    }),
-    h("button", { className: "ex-action-btn", style: { marginTop: 8 }, onClick: function () { setNutrientRows(nutrientRows.concat([{ nutrient: "", amount: "" }])); } }, "+ Add another nutrient"),
-    h("button", { className: "generate-btn", style: { marginTop: 12 }, onClick: submit }, "Add Supplement")
+    boxExpanded && h(React.Fragment, null,
+      props.supplementList.length > 0 && h("div", { style: { marginBottom: 16 } },
+        h("button", {
+          className: "ex-action-btn", style: { width: "100%", textAlign: "center", border: "2px solid #3d97d3" },
+          onClick: function () { setListOpen(!listOpen); },
+        }, "Your Supplements (" + props.supplementList.length + ")"),
+        listOpen && props.supplementList.map(function (s) {
+          return h("div", { key: s.id, style: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid #262626" } },
+            h("div", null,
+              h("div", { style: { fontSize: 13 } }, s.name),
+              h("div", { style: { fontSize: 11, color: "#737373" } },
+                (s.timing === "standalone" && s.time ? "Standalone · " + formatTimeHM(s.time) : TIMING_LABELS[s.timing]) +
+                (s.nutrients.length ? " · " + s.nutrients.map(function (n) { return (NUTRIENT_UL[n.nutrient] ? NUTRIENT_UL[n.nutrient].label : n.nutrient) + " " + n.amount + (NUTRIENT_UL[n.nutrient] ? NUTRIENT_UL[n.nutrient].unit : ""); }).join(", ") : ""))
+            ),
+            h("button", { className: "ex-action-btn", style: { flex: "0 0 auto" }, onClick: function () { props.removeSupplement(s.id); } }, "Remove")
+          );
+        })
+      ),
+      h("p", { className: "food-cat-title" }, "Add a Supplement"),
+      h("input", { className: "search-input", placeholder: "Name (e.g. Vitamin D3 5000IU — Sports Research)", value: name, onChange: function (e) { setName(e.target.value); } }),
+      h("select", {
+        className: "search-input", style: { marginTop: 8 }, value: timing,
+        onChange: function (e) { setTiming(e.target.value); },
+      },
+        Object.keys(TIMING_LABELS).map(function (k) { return h("option", { key: k, value: k }, TIMING_LABELS[k]); })
+      ),
+      timing === "standalone" && h("div", { style: { marginTop: 8 } },
+        h("p", { style: { fontSize: "11px", color: "#737373", margin: "0 0 4px" } },
+          "Optional — give it a time to slot it into the day's plan alongside your meals. Leave blank for as-needed items (they'll show in an Unscheduled section)."),
+        h("input", { type: "time", className: "search-input", value: time, onChange: function (e) { setTime(e.target.value); } })
+      ),
+      h("p", { style: { fontSize: "11px", color: "#737373", marginTop: 8 } },
+        "Optional — tag which nutrients this provides, so overlaps with your other supplements can be flagged automatically:"),
+      nutrientRows.map(function (row, i) {
+        return h("div", { key: i, style: { display: "flex", gap: 6, marginTop: 6 } },
+          h("select", {
+            className: "search-input", value: row.nutrient,
+            onChange: function (e) { updateRow(i, "nutrient", e.target.value); },
+          },
+            h("option", { value: "" }, "Nutrient..."),
+            NUTRIENT_OPTIONS.map(function (n) { return h("option", { key: n.id, value: n.id }, n.label + " (" + n.unit + ")"); })
+          ),
+          h("input", { type: "number", className: "search-input", placeholder: "Amount", value: row.amount, onChange: function (e) { updateRow(i, "amount", e.target.value); } }),
+          nutrientRows.length > 1 && h("button", { className: "ex-action-btn", style: { flex: "0 0 auto" }, onClick: function () { removeRow(i); } }, "×")
+        );
+      }),
+      h("button", { className: "ex-action-btn", style: { marginTop: 8 }, onClick: function () { setNutrientRows(nutrientRows.concat([{ nutrient: "", amount: "" }])); } }, "+ Add another nutrient"),
+      h("button", { className: "generate-btn", style: { marginTop: 12 }, onClick: submit }, "Add Supplement")
+    )
   );
 }
 
@@ -3320,6 +3331,58 @@ function StandaloneSupplementCard(props) {
     )
   );
 }
+// Renders one meal as a self-collapsing card, using the same expand/collapse pattern as exercise
+// cards (a header row with a chevron, toggling a body). Once every supplement tagged to this meal
+// is checked, the card auto-collapses back to just its header — same trigger SupplementSection used
+// to use for its own internal "Supplements taken" pill, but now the whole card shrinks instead, so
+// a finished meal doesn't keep taking up the same space it did before it was done.
+function MealCard(props) {
+  const [expanded, setExpanded] = useState(true);
+  const supplements = props.supplements || [];
+  const allSuppsChecked = supplements.length > 0 && supplements.every(function (s) { return !!props.logsToday[s.id]; });
+  const prevAllChecked = useRef(allSuppsChecked);
+  useEffect(function () {
+    if (allSuppsChecked && !prevAllChecked.current) setExpanded(false); // supplements just finished — collapse
+    prevAllChecked.current = allSuppsChecked;
+  }, [allSuppsChecked]);
+
+  const m = props.meal;
+  const status = props.status;
+  return h("div", { className: "meal-card" + (status && status !== "skip" ? " done" : "") + (props.disabled ? " preview-disabled" : ""), style: { cursor: "default" } },
+    h("div", { className: "check-circle" + (status && status !== "skip" ? " done" : "") }, status && status !== "skip" && h(Check, { size: 12 })),
+    h("div", { style: { flex: 1 } },
+      h("button", {
+        onClick: function () { setExpanded(!expanded); },
+        style: { display: "flex", width: "100%", justifyContent: "space-between", alignItems: "center", background: "none", border: "none", padding: 0, color: "inherit", cursor: "pointer", textAlign: "left" },
+      },
+        h("div", { className: "meal-top", style: { flex: 1 } }, h("span", null, m.name), h("span", null, m.time)),
+        h("span", { style: { marginLeft: 8, flexShrink: 0, color: "#737373" } }, expanded ? h(ChevronUp, { size: 16 }) : h(ChevronDown, { size: 16 }))
+      ),
+      expanded && h(React.Fragment, null,
+        h("div", { className: "meal-food" }, m.food),
+        h("div", { className: "meal-macro" }, m.cal + " cal · " + m.p + "p / " + m.c + "c / " + m.f + "f"),
+        h("div", { className: "diff-row", style: { marginTop: 8 } },
+          props.statusOpts.map(function (opt) {
+            const isPartial = opt.id === "three_quarter" || opt.id === "half";
+            const active = status === opt.id;
+            return h("button", {
+              key: opt.id, disabled: props.disabled,
+              onClick: function () { active ? props.onClearStatus() : props.onSetStatus(isPartial ? "partial" : opt.id, opt.pct); },
+              className: "diff-btn" + (active ? (opt.id === "skip" ? " hard" : " easy") : ""),
+            }, opt.label);
+          })
+        ),
+        props.mealSwapControl ? props.mealSwapControl : null,
+        supplements.length > 0 && h(SupplementSection, {
+          title: "Also take", supplements: supplements,
+          logsToday: props.logsToday, toggleLog: props.toggleLog, disabled: props.disabled,
+          compact: true, noCollapse: true,
+        })
+      )
+    )
+  );
+}
+
 function NutritionTab(props) {
   const STATUS_OPTS = [
     { id: "full", label: "Full" }, { id: "three_quarter", label: "¾", pct: 75 },
@@ -3337,6 +3400,7 @@ function NutritionTab(props) {
   // is what actually achieves "integrated into the meal plan" instead of just improved styling.
   const timedStandalone = props.supplementList.filter(function (s) { return s.timing === "standalone" && s.time; });
   const unscheduledStandalone = props.supplementList.filter(function (s) { return s.timing === "standalone" && !s.time; });
+  const unscheduledAllChecked = unscheduledStandalone.length > 0 && unscheduledStandalone.every(function (s) { return !!props.supplementLogsToday[s.id]; });
   const timelineItems = props.meals.map(function (m) {
     return { kind: "meal", sortMin: parseMealTimeToMinutes(m.time), meal: m };
   }).concat(timedStandalone.map(function (s) {
@@ -3406,19 +3470,20 @@ function NutritionTab(props) {
     unscheduledStandalone.length > 0 && h("div", { style: { marginBottom: 16 } },
       !unscheduledOpen
         ? h("button", {
-            className: "ex-action-btn", style: { width: "100%", textAlign: "left" },
+            className: "ex-action-btn",
+            style: { width: "100%", textAlign: "center", border: unscheduledAllChecked ? "1px solid #404040" : "2px solid #ef4444" },
             onClick: function () { setUnscheduledOpen(true); },
-          }, "▸ Unscheduled Supplements (" + unscheduledStandalone.length + ")")
-        : h(React.Fragment, null,
+          }, "Unscheduled Supplements (" + unscheduledStandalone.length + ")")
+        : h("div", { style: { border: unscheduledAllChecked ? "none" : "2px solid #ef4444", borderRadius: 8, padding: unscheduledAllChecked ? 0 : 8 } },
             h(SupplementSection, {
               title: "Unscheduled Supplements", timing: "standalone",
               supplements: unscheduledStandalone,
               logsToday: props.supplementLogsToday, toggleLog: props.toggleSupplementLog, disabled: isFutureDay,
             }),
             h("button", {
-              className: "ex-action-btn", style: { width: "100%", textAlign: "left", marginTop: 4 },
+              className: "ex-action-btn", style: { width: "100%", textAlign: "center", marginTop: 4 },
               onClick: function () { setUnscheduledOpen(false); },
-            }, "▾ Minimize")
+            }, "Minimize")
           )
     ),
 
@@ -3435,34 +3500,18 @@ function NutritionTab(props) {
         const m = item.meal;
         const entry = props.nToday[m.id];
         const status = entry ? (entry.status === "partial" ? (entry.pct === 75 ? "three_quarter" : "half") : entry.status) : null;
-        return h("div", { key: m.id, className: "meal-card" + (status && status !== "skip" ? " done" : "") + (isFutureDay ? " preview-disabled" : "") },
-          h("div", { className: "check-circle" + (status && status !== "skip" ? " done" : "") }, status && status !== "skip" && h(Check, { size: 12 })),
-          h("div", { style: { flex: 1 } },
-            h("div", { className: "meal-top" }, h("span", null, m.name), h("span", null, m.time)),
-            h("div", { className: "meal-food" }, m.food),
-            h("div", { className: "meal-macro" }, m.cal + " cal · " + m.p + "p / " + m.c + "c / " + m.f + "f"),
-            h("div", { className: "diff-row", style: { marginTop: 8 } },
-              STATUS_OPTS.map(function (opt) {
-                const isPartial = opt.id === "three_quarter" || opt.id === "half";
-                const active = status === opt.id;
-                return h("button", {
-                  key: opt.id, disabled: isFutureDay,
-                  onClick: function () { active ? props.clearMealStatus(m.id) : props.setMealStatus(m.id, isPartial ? "partial" : opt.id, opt.pct); },
-                  className: "diff-btn" + (active ? (opt.id === "skip" ? " hard" : " easy") : ""),
-                }, opt.label);
-              })
-            ),
-            h(SupplementSection, {
-              title: "Also take",
-              supplements: props.supplementList.filter(function (s) { return s.timing === m.id; }),
-              logsToday: props.supplementLogsToday, toggleLog: props.toggleSupplementLog, disabled: isFutureDay,
-              compact: true,
-            })
-          )
-        );
+        return h(MealCard, {
+          key: m.id, meal: m, status: status, disabled: isFutureDay, statusOpts: STATUS_OPTS,
+          onSetStatus: function (st, pct) { props.setMealStatus(m.id, st, pct); },
+          onClearStatus: function () { props.clearMealStatus(m.id); },
+          supplements: props.supplementList.filter(function (s) { return s.timing === m.id; }),
+          logsToday: props.supplementLogsToday, toggleLog: props.toggleSupplementLog,
+        });
       })
     ),
     h(FoodSearchLog, { foodLog: props.foodLog, logFood: props.logFood, removeEntry: props.removeFoodLogEntry, updateGrams: props.updateFoodLogGrams, allFoods: props.allFoods }),
+    !isFutureDay && h("button", { className: "complete-btn", style: { marginBottom: 16 }, onClick: props.completeNutritionDay },
+      props.dayComplete ? "✓ Logged — Update" : "Complete This Day"),
     h(SupplementManager, { supplementList: props.supplementList, addSupplement: props.addSupplement, removeSupplement: props.removeSupplement }),
     h("div", { className: "panel", style: { marginBottom: 16 } },
       h("h3", null, dateLabel + " Progress"),
@@ -3472,8 +3521,6 @@ function NutritionTab(props) {
       h(MacroBar, { label: "Fat", value: props.macroProgress.f, target: props.mealTotals.f, unit: "g" }),
       h("p", { style: { fontSize: "11px", color: "#525252", marginTop: 8 } }, "Skipped meals don't count against this day's target.")
     ),
-    !isFutureDay && h("button", { className: "complete-btn", onClick: props.completeNutritionDay },
-      props.dayComplete ? "✓ Logged — Update" : "Complete This Day"),
     props.nutritionHistory.length > 0 && h("div", { style: { marginTop: 16 } },
       h("div", { className: "food-cat-title" }, "Past 7 Days (tap to jump there)"),
       h("div", { className: "history-list" },
@@ -3614,6 +3661,8 @@ function HydrationTab(props) {
     !isFutureDay && h("button", { className: "complete-btn", style: { marginTop: 16 }, onClick: props.completeHydrationDay },
       props.dayComplete ? "✓ Logged — Update" : "Complete This Day"),
 
+    h(SleepSection, { sleepToday: props.sleepToday, updateSleep: props.updateSleep, sleepHistory: props.sleepHistory }),
+
     props.hydrationHistory.length > 0 && h("div", { style: { marginTop: 20, marginBottom: 20 } },
       h("div", { className: "food-cat-title" }, "Past 7 Days (tap to jump there)"),
       h("div", { className: "history-list" },
@@ -3627,51 +3676,59 @@ function HydrationTab(props) {
           );
         })
       )
-    ),
-    h(SleepSection, { sleepToday: props.sleepToday, updateSleep: props.updateSleep, sleepHistory: props.sleepHistory })
+    )
   );
 }
 
 function SleepSection(props) {
+  const [expanded, setExpanded] = useState(true);
   const duration = sleepDurationHours(props.sleepToday.bedtime, props.sleepToday.wake);
   const low = duration != null && duration < 7;
   const qualities = [{ id: "good", label: "Good" }, { id: "ok", label: "OK" }, { id: "poor", label: "Poor" }];
   return h("div", { style: { marginTop: 20 } },
-    h("div", { className: "food-cat-title" }, "Sleep"),
-    h("div", { className: "panel", style: { marginBottom: 12 } },
-      h("div", { className: "swap-form-row", style: { marginBottom: 10 } },
-        h("div", { style: { flex: 1 } },
-          h("p", { style: { fontSize: "11px", color: "#737373", margin: "0 0 4px" } }, "Bedtime"),
-          h("input", { type: "time", value: props.sleepToday.bedtime, onChange: function (e) { props.updateSleep("bedtime", e.target.value); }, className: "search-input" })
+    h("button", {
+      onClick: function () { setExpanded(!expanded); },
+      style: { display: "flex", width: "100%", justifyContent: "space-between", alignItems: "center", background: "none", border: "none", padding: 0, color: "inherit", cursor: "pointer" },
+    },
+      h("div", { className: "food-cat-title", style: { margin: 0 } }, "Sleep"),
+      expanded ? h(ChevronUp, { size: 16 }) : h(ChevronDown, { size: 16 })
+    ),
+    expanded && h(React.Fragment, null,
+      h("div", { className: "panel", style: { marginTop: 8, marginBottom: 12 } },
+        h("div", { className: "swap-form-row", style: { marginBottom: 10 } },
+          h("div", { style: { flex: 1 } },
+            h("p", { style: { fontSize: "11px", color: "#737373", margin: "0 0 4px" } }, "Bedtime"),
+            h("input", { type: "time", value: props.sleepToday.bedtime, onChange: function (e) { props.updateSleep("bedtime", e.target.value); }, className: "search-input" })
+          ),
+          h("div", { style: { flex: 1 } },
+            h("p", { style: { fontSize: "11px", color: "#737373", margin: "0 0 4px" } }, "Wake"),
+            h("input", { type: "time", value: props.sleepToday.wake, onChange: function (e) { props.updateSleep("wake", e.target.value); }, className: "search-input" })
+          )
         ),
-        h("div", { style: { flex: 1 } },
-          h("p", { style: { fontSize: "11px", color: "#737373", margin: "0 0 4px" } }, "Wake"),
-          h("input", { type: "time", value: props.sleepToday.wake, onChange: function (e) { props.updateSleep("wake", e.target.value); }, className: "search-input" })
+        h("div", { className: "sleep-duration-row" },
+          h("span", null, "Duration"),
+          h("span", { style: low ? { color: "#f0b429", fontWeight: "600" } : {} },
+            (duration != null ? duration + " hrs" : "—") + (low ? " · under 7h" : ""))
+        ),
+        h("div", { className: "diff-row" },
+          qualities.map(function (q) {
+            return h("button", {
+              key: q.id, onClick: function () { props.updateSleep("quality", q.id); },
+              className: "diff-btn" + (props.sleepToday.quality === q.id ? (q.id === "poor" ? " hard" : q.id === "good" ? " easy" : " right") : ""),
+            }, q.label);
+          })
         )
       ),
-      h("div", { className: "sleep-duration-row" },
-        h("span", null, "Duration"),
-        h("span", { style: low ? { color: "#f0b429", fontWeight: "600" } : {} },
-          (duration != null ? duration + " hrs" : "—") + (low ? " · under 7h" : ""))
-      ),
-      h("div", { className: "diff-row" },
-        qualities.map(function (q) {
-          return h("button", {
-            key: q.id, onClick: function () { props.updateSleep("quality", q.id); },
-            className: "diff-btn" + (props.sleepToday.quality === q.id ? (q.id === "poor" ? " hard" : q.id === "good" ? " easy" : " right") : ""),
-          }, q.label);
+      props.sleepHistory.length > 0 && h("div", { className: "history-list" },
+        props.sleepHistory.slice().reverse().map(function (entry) {
+          return h("div", { key: entry.date, className: "history-row" },
+            h("span", { className: "history-week" }, entry.date),
+            h("span", { className: "history-sets" },
+              entry.bedtime + "–" + entry.wake + " · " + (entry.duration != null ? entry.duration + "h" : "—") +
+              (entry.quality ? " · " + entry.quality : ""))
+          );
         })
       )
-    ),
-    props.sleepHistory.length > 0 && h("div", { className: "history-list" },
-      props.sleepHistory.slice().reverse().map(function (entry) {
-        return h("div", { key: entry.date, className: "history-row" },
-          h("span", { className: "history-week" }, entry.date),
-          h("span", { className: "history-sets" },
-            entry.bedtime + "–" + entry.wake + " · " + (entry.duration != null ? entry.duration + "h" : "—") +
-            (entry.quality ? " · " + entry.quality : ""))
-        );
-      })
     )
   );
 }
