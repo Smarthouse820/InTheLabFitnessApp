@@ -2521,30 +2521,6 @@ function WorkoutsTab(props) {
         h("button", { className: "ex-action-btn", onClick: props.dismissDeloadRecommendation }, "No, train normally")
       )
     ),
-    h("div", { className: "panel", style: { marginBottom: 16, padding: "10px 14px", border: "2px solid #3d97d3" } },
-      h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
-        h("span", { style: { fontSize: 13 } }, "Rest timer after each set"),
-        h("button", {
-          className: "ex-action-btn",
-          style: (props.restTimerSettings && props.restTimerSettings.enabled) ? { background: "#1d4ed8", color: "#fff" } : {},
-          onClick: function () { props.updateRestTimerSettings({ enabled: !(props.restTimerSettings && props.restTimerSettings.enabled) }); },
-        }, (props.restTimerSettings && props.restTimerSettings.enabled) ? "On" : "Off")
-      ),
-      props.restTimerSettings && props.restTimerSettings.enabled && h("div", { style: { marginTop: 10 } },
-        h("div", { className: "diff-row" },
-          [60, 90, 120, 180].map(function (s) {
-            return h("button", {
-              key: s, onClick: function () { props.updateRestTimerSettings({ seconds: s }); },
-              className: "diff-btn" + (props.restTimerSettings.seconds === s ? " easy" : ""),
-            }, s < 120 ? s + "s" : (s / 60) + "m");
-          })
-        ),
-        h("p", { style: { fontSize: 11, color: "#737373", margin: "8px 0 0" } },
-          "Starts when you tap away from a set's rep count. Runs entirely on this device — the countdown always shows here in the app; the extra notification needs permission granted" +
-          (typeof Notification !== "undefined" && Notification.permission === "denied" ? " (currently blocked in your browser settings)" : "") +
-          ", and on iPhone also requires iOS 16.4+ with the app added to your Home Screen.")
-      )
-    ),
     h("div", { className: "day-tabs" },
       DAYS.map(function (d) {
         return h("button", {
@@ -2562,7 +2538,7 @@ function WorkoutsTab(props) {
     ),
     !isRest && h("div", { style: { display: "flex", gap: 8, marginBottom: 12 } },
       !groupingMode
-        ? h("button", { className: "ex-action-btn", onClick: function () { setGroupingMode(true); setPendingSelection([]); } }, "Group Superset")
+        ? h("button", { className: "ex-action-btn", onClick: function () { setGroupingMode(true); setPendingSelection([]); } }, "Create Superset")
         : h(React.Fragment, null,
             h("button", { className: "ex-action-btn", onClick: function () { setGroupingMode(false); setPendingSelection([]); } }, "Cancel"),
             h("button", {
@@ -2574,6 +2550,37 @@ function WorkoutsTab(props) {
               },
             }, "Confirm Superset (" + pendingSelection.length + " selected)")
           )
+    ),
+    h("div", { className: "panel", style: { marginBottom: 12, padding: "10px 14px", background: "#0a0a0a", border: "1px solid #404040", borderRadius: 8 } },
+      h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
+        h("span", { style: { fontSize: 13 } }, "Rest timer after each set"),
+        h("div", { style: { display: "flex", gap: 6 } },
+          h("button", {
+            className: "ex-action-btn",
+            style: Object.assign({ flex: "0 0 auto", padding: "6px 14px" }, (props.restTimerSettings && props.restTimerSettings.enabled) ? { background: "#1d4ed8", color: "#fff", borderColor: "#1d4ed8" } : {}),
+            onClick: function () { props.updateRestTimerSettings({ enabled: true }); },
+          }, "On"),
+          h("button", {
+            className: "ex-action-btn",
+            style: Object.assign({ flex: "0 0 auto", padding: "6px 14px" }, !(props.restTimerSettings && props.restTimerSettings.enabled) ? { background: "#262626", color: "#fff" } : {}),
+            onClick: function () { props.updateRestTimerSettings({ enabled: false }); },
+          }, "Off")
+        )
+      ),
+      props.restTimerSettings && props.restTimerSettings.enabled && h("div", { style: { marginTop: 10 } },
+        h("div", { className: "diff-row" },
+          [60, 90, 120, 180].map(function (s) {
+            return h("button", {
+              key: s, onClick: function () { props.updateRestTimerSettings({ seconds: s }); },
+              className: "diff-btn" + (props.restTimerSettings.seconds === s ? " easy" : ""),
+            }, s < 120 ? s + "s" : (s / 60) + "m");
+          })
+        ),
+        h("p", { style: { fontSize: 11, color: "#737373", margin: "8px 0 0" } },
+          "Starts when you tap away from a set's rep count. Runs entirely on this device — the countdown always shows here in the app; the extra notification needs permission granted" +
+          (typeof Notification !== "undefined" && Notification.permission === "denied" ? " (currently blocked in your browser settings)" : "") +
+          ", and on iPhone also requires iOS 16.4+ with the app added to your Home Screen.")
+      )
     ),
     isRest
       ? h("div", { className: "rest-box" }, "No cardio, no lifting.")
@@ -3246,7 +3253,7 @@ function SupplementManager(props) {
     h("h3", null, "Supplements"),
     props.supplementList.length > 0 && h("div", { style: { marginBottom: 16 } },
       h("button", {
-        className: "ex-action-btn", style: { width: "100%", textAlign: "left" },
+        className: "ex-action-btn", style: { width: "100%", textAlign: "left", border: "2px solid #3d97d3" },
         onClick: function () { setListOpen(!listOpen); },
       }, (listOpen ? "▾ " : "▸ ") + "Your supplements (" + props.supplementList.length + ")"),
       listOpen && props.supplementList.map(function (s) {
@@ -3322,6 +3329,7 @@ function NutritionTab(props) {
   const todayOffset = 0, todayIdx = todayDayIdx();
   const isFutureWeek = props.weekOffset < 0;
   const isFutureDay = isFutureWeek || (props.weekOffset === 0 && props.dayIdx > todayIdx);
+  const [unscheduledOpen, setUnscheduledOpen] = useState(false); // collapsed by default — keeps the meal timeline the first thing visible
 
   // Timed standalone supplements get slotted into the day's timeline alongside meals, sorted by
   // clock time; ones with no time stay in a separate Unscheduled section (rendered above). Building
@@ -3395,11 +3403,24 @@ function NutritionTab(props) {
         "Food amounts come only from built-in foods with micronutrient data, for the day shown. Magnesium, folate, and vitamin A from food are deliberately not counted — their upper limits apply to supplemental or synthetic forms, not food.")
     ),
 
-    h(SupplementSection, {
-      title: "Unscheduled Supplements", timing: "standalone",
-      supplements: unscheduledStandalone,
-      logsToday: props.supplementLogsToday, toggleLog: props.toggleSupplementLog, disabled: isFutureDay,
-    }),
+    unscheduledStandalone.length > 0 && h("div", { style: { marginBottom: 16 } },
+      !unscheduledOpen
+        ? h("button", {
+            className: "ex-action-btn", style: { width: "100%", textAlign: "left" },
+            onClick: function () { setUnscheduledOpen(true); },
+          }, "▸ Unscheduled Supplements (" + unscheduledStandalone.length + ")")
+        : h(React.Fragment, null,
+            h(SupplementSection, {
+              title: "Unscheduled Supplements", timing: "standalone",
+              supplements: unscheduledStandalone,
+              logsToday: props.supplementLogsToday, toggleLog: props.toggleSupplementLog, disabled: isFutureDay,
+            }),
+            h("button", {
+              className: "ex-action-btn", style: { width: "100%", textAlign: "left", marginTop: 4 },
+              onClick: function () { setUnscheduledOpen(false); },
+            }, "▾ Minimize")
+          )
+    ),
 
     h("div", { style: { marginBottom: 24 } },
       timelineItems.map(function (item) {
