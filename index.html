@@ -1483,6 +1483,7 @@ function makeDefaultData() {
     supplementList: [], // shared across all programs — a person's actual regimen isn't tied to which workout program is active
     supplementLogs: {}, // { [dateKey]: { [supplementId]: true } }
     restTimerSettings: { enabled: false, seconds: 90 }, // client-side post-set rest reminder — no backend involved
+    uiPrefs: { sleepExpanded: true, supplementsBoxExpanded: true, yourSupplementsOpen: false, unscheduledSupplementsOpen: false }, // manual collapse/expand toggles — persisted so they stay as left across tab switches
     programs: {
       cutting: freshProgramState(EXERCISES_CUTTING),
       cruise: freshProgramState(EXERCISES_CRUISE),
@@ -1503,6 +1504,7 @@ function normalizeV2(parsed) {
     supplementList: parsed.supplementList || [],
     supplementLogs: parsed.supplementLogs || {},
     restTimerSettings: Object.assign({ enabled: false, seconds: 90 }, parsed.restTimerSettings || {}),
+    uiPrefs: Object.assign({ sleepExpanded: true, supplementsBoxExpanded: true, yourSupplementsOpen: false, unscheduledSupplementsOpen: false }, parsed.uiPrefs || {}),
     programs: {
       cutting: mergeProgramState((parsed.programs || {}).cutting, EXERCISES_CUTTING),
       cruise: mergeProgramState((parsed.programs || {}).cruise, EXERCISES_CRUISE),
@@ -1625,6 +1627,12 @@ function App() {
     if (patch.enabled && typeof Notification !== "undefined" && Notification.permission === "default") {
       Notification.requestPermission();
     }
+  }
+  // Persists manual collapse/expand toggles (Sleep, Supplements box, Your/Unscheduled Supplements)
+  // so they stay exactly as left across tab switches, rather than resetting on every remount.
+  function updateUiPrefs(patch) {
+    const cur = data.uiPrefs || {};
+    save(Object.assign({}, data, { uiPrefs: Object.assign({}, cur, patch) }));
   }
 
   const def = data.activeProgram === "custom" ? buildCustomProgramDef(data.customProgramConfig) : PROGRAM_DEFS[data.activeProgram];
@@ -2254,6 +2262,7 @@ function App() {
               supplementList: data.supplementList, supplementLogsToday: data.supplementLogs[nutritionSelectedDate] || {},
               addSupplement: addSupplement, removeSupplement: removeSupplement, toggleSupplementLog: toggleSupplementLog,
               nutrientWarnings: checkCombinedNutrientOverlaps(data.supplementList, prog.foodLog[nutritionSelectedDate] || [], allFoods),
+              uiPrefs: data.uiPrefs, updateUiPrefs: updateUiPrefs,
             }),
             tab === "hydration" && h(HydrationTab, {
               hToday: hToday, toggleHydration: toggleHydration, ozLogged: ozLogged, hydrationHistory: hydrationHistory,
@@ -2262,6 +2271,7 @@ function App() {
               dayIdx: hydrationDayIdx, setDayIdx: setHydrationDayIdx,
               selectedDate: hydrationSelectedDate, isToday: hydrationIsToday,
               completeHydrationDay: completeHydrationDay, dayComplete: !!(prog.hydrationDayComplete || {})[hydrationSelectedDate],
+              uiPrefs: data.uiPrefs, updateUiPrefs: updateUiPrefs,
             }),
             tab === "milestones" && h(MilestonesTab, {
               currentWeek: prog.currentWeek, actuals: prog.milestoneActuals, setActual: setMilestoneActual,
@@ -2731,10 +2741,10 @@ function AdaptiveTDEESection(props) {
       h("input", {
         type: "number", inputMode: "decimal", placeholder: todayLogged != null ? "Today: " + todayLogged + " lb" : "Today's Weight",
         value: weightInput, onChange: function (e) { setWeightInput(e.target.value); },
-        className: "search-input", style: { flex: "0 0 40%" },
+        className: "search-input", style: { flex: 1, margin: 0, boxSizing: "border-box" },
       }),
       h("button", {
-        className: "swap-save-btn", style: { flex: 1 },
+        className: "swap-save-btn", style: { flex: 1, padding: "10px 0", fontSize: 14, boxSizing: "border-box" },
         onClick: function () { if (weightInput !== "") { props.logDailyWeight(Number(weightInput)); setWeightInput(""); } },
       }, "Log")
     ),
@@ -3233,8 +3243,8 @@ function SupplementManager(props) {
   const [timing, setTiming] = useState("m1");
   const [time, setTime] = useState("");
   const [nutrientRows, setNutrientRows] = useState([{ nutrient: "", amount: "" }]);
-  const [listOpen, setListOpen] = useState(false); // entered list starts minimized — it can get long
-  const [boxExpanded, setBoxExpanded] = useState(true);
+  const listOpen = props.uiPrefs.yourSupplementsOpen;
+  const boxExpanded = props.uiPrefs.supplementsBoxExpanded;
 
   function updateRow(i, field, value) {
     const next = nutrientRows.slice();
@@ -3254,7 +3264,7 @@ function SupplementManager(props) {
 
   return h("div", { className: "panel", style: { marginTop: 16, marginBottom: 16 } },
     h("button", {
-      onClick: function () { setBoxExpanded(!boxExpanded); },
+      onClick: function () { props.updateUiPrefs({ supplementsBoxExpanded: !boxExpanded }); },
       style: { display: "flex", width: "100%", justifyContent: "space-between", alignItems: "center", background: "none", border: "none", padding: 0, color: "inherit", cursor: "pointer", marginBottom: boxExpanded ? 12 : 0 },
     },
       h("h3", { style: { margin: 0 } }, "Supplements"),
@@ -3264,7 +3274,7 @@ function SupplementManager(props) {
       props.supplementList.length > 0 && h("div", { style: { marginBottom: 16 } },
         h("button", {
           className: "ex-action-btn", style: { width: "100%", textAlign: "center", border: "2px solid #3d97d3" },
-          onClick: function () { setListOpen(!listOpen); },
+          onClick: function () { props.updateUiPrefs({ yourSupplementsOpen: !listOpen }); },
         }, "Your Supplements (" + props.supplementList.length + ")"),
         listOpen && props.supplementList.map(function (s) {
           return h("div", { key: s.id, style: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid #262626" } },
@@ -3331,54 +3341,37 @@ function StandaloneSupplementCard(props) {
     )
   );
 }
-// Renders one meal as a self-collapsing card, using the same expand/collapse pattern as exercise
-// cards (a header row with a chevron, toggling a body). Once every supplement tagged to this meal
-// is checked, the card auto-collapses back to just its header — same trigger SupplementSection used
-// to use for its own internal "Supplements taken" pill, but now the whole card shrinks instead, so
-// a finished meal doesn't keep taking up the same space it did before it was done.
+// Renders one meal card. The card itself is always fully visible — only its "Also take" supplement
+// checklist collapses on its own (handled entirely by SupplementSection, which derives its collapsed
+// state from the actual checked-supplement data every render, so it correctly stays collapsed across
+// tab switches/remounts rather than resetting to some fixed default).
 function MealCard(props) {
-  const [expanded, setExpanded] = useState(true);
-  const supplements = props.supplements || [];
-  const allSuppsChecked = supplements.length > 0 && supplements.every(function (s) { return !!props.logsToday[s.id]; });
-  const prevAllChecked = useRef(allSuppsChecked);
-  useEffect(function () {
-    if (allSuppsChecked && !prevAllChecked.current) setExpanded(false); // supplements just finished — collapse
-    prevAllChecked.current = allSuppsChecked;
-  }, [allSuppsChecked]);
-
   const m = props.meal;
   const status = props.status;
-  return h("div", { className: "meal-card" + (status && status !== "skip" ? " done" : "") + (props.disabled ? " preview-disabled" : ""), style: { cursor: "default" } },
+  const supplements = props.supplements || [];
+  return h("div", { className: "meal-card" + (status && status !== "skip" ? " done" : "") + (props.disabled ? " preview-disabled" : "") },
     h("div", { className: "check-circle" + (status && status !== "skip" ? " done" : "") }, status && status !== "skip" && h(Check, { size: 12 })),
     h("div", { style: { flex: 1 } },
-      h("button", {
-        onClick: function () { setExpanded(!expanded); },
-        style: { display: "flex", width: "100%", justifyContent: "space-between", alignItems: "center", background: "none", border: "none", padding: 0, color: "inherit", cursor: "pointer", textAlign: "left" },
-      },
-        h("div", { className: "meal-top", style: { flex: 1 } }, h("span", null, m.name), h("span", null, m.time)),
-        h("span", { style: { marginLeft: 8, flexShrink: 0, color: "#737373" } }, expanded ? h(ChevronUp, { size: 16 }) : h(ChevronDown, { size: 16 }))
-      ),
-      expanded && h(React.Fragment, null,
-        h("div", { className: "meal-food" }, m.food),
-        h("div", { className: "meal-macro" }, m.cal + " cal · " + m.p + "p / " + m.c + "c / " + m.f + "f"),
-        h("div", { className: "diff-row", style: { marginTop: 8 } },
-          props.statusOpts.map(function (opt) {
-            const isPartial = opt.id === "three_quarter" || opt.id === "half";
-            const active = status === opt.id;
-            return h("button", {
-              key: opt.id, disabled: props.disabled,
-              onClick: function () { active ? props.onClearStatus() : props.onSetStatus(isPartial ? "partial" : opt.id, opt.pct); },
-              className: "diff-btn" + (active ? (opt.id === "skip" ? " hard" : " easy") : ""),
-            }, opt.label);
-          })
-        ),
-        props.mealSwapControl ? props.mealSwapControl : null,
-        supplements.length > 0 && h(SupplementSection, {
-          title: "Also take", supplements: supplements,
-          logsToday: props.logsToday, toggleLog: props.toggleLog, disabled: props.disabled,
-          compact: true, noCollapse: true,
+      h("div", { className: "meal-top" }, h("span", null, m.name), h("span", null, m.time)),
+      h("div", { className: "meal-food" }, m.food),
+      h("div", { className: "meal-macro" }, m.cal + " cal · " + m.p + "p / " + m.c + "c / " + m.f + "f"),
+      h("div", { className: "diff-row", style: { marginTop: 8 } },
+        props.statusOpts.map(function (opt) {
+          const isPartial = opt.id === "three_quarter" || opt.id === "half";
+          const active = status === opt.id;
+          return h("button", {
+            key: opt.id, disabled: props.disabled,
+            onClick: function () { active ? props.onClearStatus() : props.onSetStatus(isPartial ? "partial" : opt.id, opt.pct); },
+            className: "diff-btn" + (active ? (opt.id === "skip" ? " hard" : " easy") : ""),
+          }, opt.label);
         })
-      )
+      ),
+      props.mealSwapControl ? props.mealSwapControl : null,
+      supplements.length > 0 && h(SupplementSection, {
+        title: "Also take", supplements: supplements,
+        logsToday: props.logsToday, toggleLog: props.toggleLog, disabled: props.disabled,
+        compact: true,
+      })
     )
   );
 }
@@ -3392,7 +3385,7 @@ function NutritionTab(props) {
   const todayOffset = 0, todayIdx = todayDayIdx();
   const isFutureWeek = props.weekOffset < 0;
   const isFutureDay = isFutureWeek || (props.weekOffset === 0 && props.dayIdx > todayIdx);
-  const [unscheduledOpen, setUnscheduledOpen] = useState(false); // collapsed by default — keeps the meal timeline the first thing visible
+  const unscheduledOpen = props.uiPrefs.unscheduledSupplementsOpen; // persisted — collapsed by default, stays as left
 
   // Timed standalone supplements get slotted into the day's timeline alongside meals, sorted by
   // clock time; ones with no time stay in a separate Unscheduled section (rendered above). Building
@@ -3472,7 +3465,7 @@ function NutritionTab(props) {
         ? h("button", {
             className: "ex-action-btn",
             style: { width: "100%", textAlign: "center", border: unscheduledAllChecked ? "1px solid #404040" : "2px solid #ef4444" },
-            onClick: function () { setUnscheduledOpen(true); },
+            onClick: function () { props.updateUiPrefs({ unscheduledSupplementsOpen: true }); },
           }, "Unscheduled Supplements (" + unscheduledStandalone.length + ")")
         : h("div", { style: { border: unscheduledAllChecked ? "none" : "2px solid #ef4444", borderRadius: 8, padding: unscheduledAllChecked ? 0 : 8 } },
             h(SupplementSection, {
@@ -3482,7 +3475,7 @@ function NutritionTab(props) {
             }),
             h("button", {
               className: "ex-action-btn", style: { width: "100%", textAlign: "center", marginTop: 4 },
-              onClick: function () { setUnscheduledOpen(false); },
+              onClick: function () { props.updateUiPrefs({ unscheduledSupplementsOpen: false }); },
             }, "Minimize")
           )
     ),
@@ -3512,7 +3505,7 @@ function NutritionTab(props) {
     h(FoodSearchLog, { foodLog: props.foodLog, logFood: props.logFood, removeEntry: props.removeFoodLogEntry, updateGrams: props.updateFoodLogGrams, allFoods: props.allFoods }),
     !isFutureDay && h("button", { className: "complete-btn", style: { marginBottom: 16 }, onClick: props.completeNutritionDay },
       props.dayComplete ? "✓ Logged — Update" : "Complete This Day"),
-    h(SupplementManager, { supplementList: props.supplementList, addSupplement: props.addSupplement, removeSupplement: props.removeSupplement }),
+    h(SupplementManager, { supplementList: props.supplementList, addSupplement: props.addSupplement, removeSupplement: props.removeSupplement, uiPrefs: props.uiPrefs, updateUiPrefs: props.updateUiPrefs }),
     h("div", { className: "panel", style: { marginBottom: 16 } },
       h("h3", null, dateLabel + " Progress"),
       h(MacroBar, { label: "Calories", value: props.macroProgress.cal, target: props.mealTotals.cal, unit: "" }),
@@ -3661,7 +3654,11 @@ function HydrationTab(props) {
     !isFutureDay && h("button", { className: "complete-btn", style: { marginTop: 16 }, onClick: props.completeHydrationDay },
       props.dayComplete ? "✓ Logged — Update" : "Complete This Day"),
 
-    h(SleepSection, { sleepToday: props.sleepToday, updateSleep: props.updateSleep, sleepHistory: props.sleepHistory }),
+    h(SleepSection, {
+      sleepToday: props.sleepToday, updateSleep: props.updateSleep, sleepHistory: props.sleepHistory,
+      expanded: props.uiPrefs.sleepExpanded,
+      onToggle: function () { props.updateUiPrefs({ sleepExpanded: !props.uiPrefs.sleepExpanded }); },
+    }),
 
     props.hydrationHistory.length > 0 && h("div", { style: { marginTop: 20, marginBottom: 20 } },
       h("div", { className: "food-cat-title" }, "Past 7 Days (tap to jump there)"),
@@ -3681,13 +3678,13 @@ function HydrationTab(props) {
 }
 
 function SleepSection(props) {
-  const [expanded, setExpanded] = useState(true);
+  const expanded = props.expanded;
   const duration = sleepDurationHours(props.sleepToday.bedtime, props.sleepToday.wake);
   const low = duration != null && duration < 7;
   const qualities = [{ id: "good", label: "Good" }, { id: "ok", label: "OK" }, { id: "poor", label: "Poor" }];
   return h("div", { style: { marginTop: 20 } },
     h("button", {
-      onClick: function () { setExpanded(!expanded); },
+      onClick: props.onToggle,
       style: { display: "flex", width: "100%", justifyContent: "space-between", alignItems: "center", background: "none", border: "none", padding: 0, color: "inherit", cursor: "pointer" },
     },
       h("div", { className: "food-cat-title", style: { margin: 0 } }, "Sleep"),
