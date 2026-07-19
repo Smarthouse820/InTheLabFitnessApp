@@ -1013,6 +1013,26 @@ const FOOD_DB = [
   { name: "Whey protein powder", cat: "protein", cal: 409, p: 83, c: 8, f: 5, micro: { calcium: 400 }, measureByScoop: true }, // ~25g protein per 30g scoop
   { name: "Deli turkey slices", cat: "protein", cal: 104, p: 17, c: 3, f: 2, micro: { selenium: 22, zinc: 1 } },
   { name: "Deli ham slices", cat: "protein", cal: 145, p: 21, c: 1.5, f: 6, micro: { selenium: 25, zinc: 1.8, iron: 0.8 } },
+  { name: "Cod", cat: "protein", cal: 82, p: 18, c: 0, f: 0.7, micro: { selenium: 33, vitaminD: 44 } },
+  { name: "Halibut", cat: "protein", cal: 111, p: 23, c: 0, f: 1.3, micro: { selenium: 47, vitaminD: 54 } },
+  { name: "Sardines (canned in oil)", cat: "protein", cal: 208, p: 25, c: 0, f: 11, micro: { calcium: 382, vitaminD: 193, selenium: 53 } },
+  { name: "Ground chicken", cat: "protein", cal: 143, p: 18, c: 0, f: 8, micro: { selenium: 22, zinc: 1.6 } },
+  { name: "Turkey bacon", cat: "protein", cal: 150, p: 12, c: 1, f: 10, micro: { selenium: 20 } },
+  { name: "Beef jerky", cat: "protein", cal: 410, p: 33, c: 11, f: 26, micro: { zinc: 5, iron: 3, selenium: 30 } },
+  { name: "Seitan", cat: "protein", cal: 370, p: 75, c: 14, f: 1.9, micro: { iron: 5, zinc: 1 } },
+  { name: "Edamame", cat: "protein", cal: 122, p: 11, c: 10, f: 5, micro: { iron: 2.3, calcium: 63, zinc: 1 } },
+  { name: "Duck breast", cat: "protein", cal: 201, p: 23, c: 0, f: 11, micro: { selenium: 18, iron: 2.7, zinc: 1.9 } },
+  { name: "Bison (ground)", cat: "protein", cal: 146, p: 22, c: 0, f: 6, micro: { zinc: 5, iron: 2.8, selenium: 15 } },
+  { name: "Scallops", cat: "protein", cal: 88, p: 17, c: 3, f: 0.8, micro: { selenium: 23, zinc: 0.6, calcium: 10 } },
+  { name: "Crab", cat: "protein", cal: 97, p: 19, c: 0, f: 1.5, micro: { selenium: 40, zinc: 4, calcium: 89 } },
+  { name: "Casein protein powder", cat: "protein", cal: 360, p: 78, c: 6, f: 2, micro: { calcium: 700 }, measureByScoop: true },
+  { name: "Pea protein powder", cat: "protein", cal: 380, p: 80, c: 5, f: 6, micro: { iron: 6, zinc: 3 }, measureByScoop: true },
+  { name: "Mahi mahi", cat: "protein", cal: 109, p: 24, c: 0, f: 0.9, micro: { selenium: 44 } },
+  { name: "Trout", cat: "protein", cal: 148, p: 21, c: 0, f: 6.6, micro: { vitaminD: 155, selenium: 13 } },
+  { name: "Canadian bacon", cat: "protein", cal: 145, p: 21, c: 1.3, f: 6, micro: { selenium: 25, zinc: 1.5 } },
+  { name: "Chorizo", cat: "protein", cal: 455, p: 24, c: 2, f: 38, micro: { iron: 2.3, zinc: 3.5 } },
+  { name: "Lamb (leg)", cat: "protein", cal: 258, p: 25, c: 0, f: 17, micro: { zinc: 4.5, iron: 1.9, selenium: 25 } },
+  { name: "Anchovies (canned)", cat: "protein", cal: 210, p: 29, c: 0, f: 10, micro: { calcium: 232, selenium: 36 } },
   // Carbs
   { name: "White rice", cat: "carb", cal: 130, p: 2.4, c: 28, f: 0.3, micro: { iron: 1.2 } },
   { name: "Brown rice", cat: "carb", cal: 123, p: 2.7, c: 26, f: 1, micro: { selenium: 10, zinc: 0.6, iron: 0.5 } },
@@ -1040,6 +1060,30 @@ const FOOD_DB = [
   { name: "Berries (mixed)", cat: "carb", cal: 57, p: 0.7, c: 14, f: 0.3, micro: { vitaminC: 30 } },
   { name: "Mango", cat: "carb", cal: 60, p: 0.8, c: 15, f: 0.4, micro: { vitaminC: 36 } },
   { name: "Pineapple", cat: "carb", cal: 50, p: 0.5, c: 13, f: 0.1, micro: { vitaminC: 48 } },
+  { name: "Couscous", cat: "carb", cal: 112, p: 3.8, c: 23, f: 0.2, micro: { selenium: 22, iron: 0.4 } },
+  { name: "Barley", cat: "carb", cal: 123, p: 2.3, c: 28, f: 0.4, micro: { iron: 1.3, zinc: 1 } },
+  { name: "Farro", cat: "carb", cal: 150, p: 5, c: 32, f: 1, micro: { iron: 1.9, zinc: 1.5 } },
+  { name: "Sourdough bread", cat: "carb", cal: 289, p: 11, c: 56, f: 1.9, micro: { iron: 2.4, selenium: 25 } },
+  { name: "English muffin", cat: "carb", cal: 227, p: 8, c: 44, f: 1.8, micro: { iron: 2.8, calcium: 100 } },
+  { name: "Rice cakes", cat: "carb", cal: 387, p: 8, c: 82, f: 2.8, micro: { iron: 1 } },
+  { name: "Plantain", cat: "carb", cal: 122, p: 0.8, c: 32, f: 0.2, micro: { vitaminC: 10 } },
+  { name: "Dates", cat: "carb", cal: 277, p: 1.8, c: 75, f: 0.2, micro: { iron: 0.9, calcium: 39 } },
+  { name: "Raisins", cat: "carb", cal: 299, p: 3.1, c: 79, f: 0.5, micro: { iron: 1.9, calcium: 50 } },
+  { name: "Kiwi", cat: "carb", cal: 61, p: 1.1, c: 15, f: 0.5, micro: { vitaminC: 93 } },
+  { name: "Pear", cat: "carb", cal: 57, p: 0.4, c: 15, f: 0.1, micro: { vitaminC: 4 } },
+  { name: "Cantaloupe", cat: "carb", cal: 34, p: 0.8, c: 8, f: 0.2, micro: { vitaminC: 37 } },
+  { name: "Papaya", cat: "carb", cal: 43, p: 0.5, c: 11, f: 0.3, micro: { vitaminC: 62 } },
+  { name: "Rice noodles", cat: "carb", cal: 109, p: 0.9, c: 25, f: 0.2 },
+  { name: "Soba noodles", cat: "carb", cal: 99, p: 5, c: 21, f: 0.1, micro: { iron: 0.5 } },
+  { name: "Naan", cat: "carb", cal: 310, p: 9, c: 50, f: 8, micro: { calcium: 60, iron: 2.5 } },
+  { name: "Cream of wheat (cooked)", cat: "carb", cal: 60, p: 1.8, c: 13, f: 0.2, micro: { iron: 4 } },
+  { name: "Wild rice", cat: "carb", cal: 101, p: 4, c: 21, f: 0.3, micro: { zinc: 1.3, iron: 0.6 } },
+  { name: "Blueberries", cat: "carb", cal: 57, p: 0.7, c: 14, f: 0.3, micro: { vitaminC: 10 } },
+  { name: "Cherries", cat: "carb", cal: 63, p: 1.1, c: 16, f: 0.2, micro: { vitaminC: 7 } },
+  { name: "Peaches", cat: "carb", cal: 39, p: 0.9, c: 10, f: 0.3, micro: { vitaminC: 6.6 } },
+  { name: "Grapefruit", cat: "carb", cal: 42, p: 0.8, c: 11, f: 0.1, micro: { vitaminC: 31 } },
+  { name: "Figs", cat: "carb", cal: 74, p: 0.8, c: 19, f: 0.3, micro: { calcium: 35, iron: 0.4 } },
+  { name: "Maple syrup", cat: "carb", cal: 260, p: 0, c: 67, f: 0.1, micro: { calcium: 102, zinc: 1.5 } },
   // Fats
   { name: "Peanut butter", cat: "fat", cal: 588, p: 25, c: 20, f: 50, micro: { zinc: 2.7, iron: 1.7 } },
   { name: "Almond butter", cat: "fat", cal: 614, p: 21, c: 19, f: 56, micro: { calcium: 347, iron: 3.5, zinc: 3 } },
@@ -1054,6 +1098,20 @@ const FOOD_DB = [
   { name: "Walnuts", cat: "fat", cal: 654, p: 15, c: 14, f: 65, micro: { zinc: 3.1, iron: 2.9, calcium: 98 } },
   { name: "Cashews", cat: "fat", cal: 553, p: 18, c: 30, f: 44, micro: { zinc: 5.8, iron: 6.7 } },
   { name: "Sunflower seeds", cat: "fat", cal: 584, p: 21, c: 20, f: 51, micro: { selenium: 53, zinc: 5, iron: 5.3 } },
+  { name: "Pistachios", cat: "fat", cal: 560, p: 20, c: 28, f: 45, micro: { calcium: 105, iron: 3.9, zinc: 2.2 } },
+  { name: "Pecans", cat: "fat", cal: 691, p: 9.2, c: 14, f: 72, micro: { zinc: 4.5, iron: 2.5 } },
+  { name: "Macadamia nuts", cat: "fat", cal: 718, p: 7.9, c: 14, f: 76, micro: { iron: 2.7, zinc: 1.3 } },
+  { name: "Chia seeds", cat: "fat", cal: 486, p: 17, c: 42, f: 31, micro: { calcium: 631, iron: 7.7, zinc: 4.6 } },
+  { name: "Flaxseed (ground)", cat: "fat", cal: 534, p: 18, c: 29, f: 42, micro: { calcium: 255, iron: 5.7, zinc: 4.3 } },
+  { name: "Tahini", cat: "fat", cal: 595, p: 17, c: 21, f: 54, micro: { calcium: 426, iron: 9, zinc: 4.6 } },
+  { name: "Pumpkin seeds", cat: "fat", cal: 559, p: 30, c: 11, f: 49, micro: { zinc: 7.8, iron: 8.8, calcium: 46 } },
+  { name: "Brie cheese", cat: "fat", cal: 334, p: 21, c: 0.5, f: 28, micro: { calcium: 184, zinc: 2.4, selenium: 14 } },
+  { name: "Feta cheese", cat: "fat", cal: 264, p: 14, c: 4, f: 21, micro: { calcium: 493, zinc: 2.9, selenium: 15 } },
+  { name: "Ghee", cat: "fat", cal: 900, p: 0, c: 0, f: 100 },
+  { name: "Sunflower seed butter", cat: "fat", cal: 617, p: 19, c: 20, f: 55, micro: { iron: 4.2, zinc: 5, calcium: 78 } },
+  { name: "Coconut milk (canned)", cat: "fat", cal: 230, p: 2.3, c: 6, f: 24, micro: { iron: 1.6 } },
+  { name: "Sesame oil", cat: "fat", cal: 884, p: 0, c: 0, f: 100 },
+  { name: "Brazil nuts", cat: "fat", cal: 659, p: 14, c: 12, f: 66, micro: { selenium: 1917, zinc: 4, calcium: 160 } },
   // Vegetables
   { name: "Broccoli", cat: "veg", cal: 35, p: 2.4, c: 7, f: 0.4, micro: { vitaminC: 89, calcium: 47 } },
   { name: "Green beans", cat: "veg", cal: 35, p: 1.8, c: 7, f: 0.1, micro: { vitaminC: 12, calcium: 37, iron: 1 } },
@@ -1069,6 +1127,18 @@ const FOOD_DB = [
   { name: "Onion", cat: "veg", cal: 40, p: 1.1, c: 9.3, f: 0.1 },
   { name: "Asparagus", cat: "veg", cal: 20, p: 2.2, c: 3.9, f: 0.1, micro: { iron: 2.1 } },
   { name: "Cabbage", cat: "veg", cal: 25, p: 1.3, c: 5.8, f: 0.1, micro: { vitaminC: 37 } },
+  { name: "Brussels sprouts", cat: "veg", cal: 43, p: 3.4, c: 9, f: 0.3, micro: { vitaminC: 85, calcium: 42, iron: 1.4 } },
+  { name: "Eggplant", cat: "veg", cal: 25, p: 1, c: 6, f: 0.2, micro: { vitaminC: 2.2 } },
+  { name: "Celery", cat: "veg", cal: 16, p: 0.7, c: 3, f: 0.2, micro: { vitaminC: 3, calcium: 40 } },
+  { name: "Radish", cat: "veg", cal: 16, p: 0.7, c: 3.4, f: 0.1, micro: { vitaminC: 15 } },
+  { name: "Beets", cat: "veg", cal: 43, p: 1.6, c: 10, f: 0.2, micro: { vitaminC: 4.9, iron: 0.8 } },
+  { name: "Snap peas", cat: "veg", cal: 42, p: 2.8, c: 7.6, f: 0.2, micro: { vitaminC: 60, calcium: 43, iron: 2.1 } },
+  { name: "Artichoke", cat: "veg", cal: 47, p: 3.3, c: 11, f: 0.2, micro: { vitaminC: 12, iron: 1.3 } },
+  { name: "Butternut squash", cat: "veg", cal: 45, p: 1, c: 12, f: 0.1, micro: { vitaminC: 21, calcium: 48 } },
+  { name: "Bok choy", cat: "veg", cal: 13, p: 1.5, c: 2.2, f: 0.2, micro: { vitaminC: 45, calcium: 105 } },
+  { name: "Collard greens", cat: "veg", cal: 32, p: 3, c: 5.4, f: 0.6, micro: { vitaminC: 35, calcium: 232, iron: 0.5 } },
+  { name: "Leeks", cat: "veg", cal: 61, p: 1.5, c: 14, f: 0.3, micro: { vitaminC: 12, calcium: 59, iron: 2.1 } },
+  { name: "Snow peas", cat: "veg", cal: 42, p: 2.8, c: 7.5, f: 0.2, micro: { vitaminC: 60, calcium: 43, iron: 1.5 } },
   // Other (logging only — not used by the Custom Plan solver, which needs the 4 categories above)
   { name: "Milk (2%)", cat: "other", cal: 50, p: 3.3, c: 4.8, f: 2, micro: { calcium: 120, vitaminD: 43 } },
   { name: "Milk (whole)", cat: "other", cal: 61, p: 3.2, c: 4.8, f: 3.3, micro: { calcium: 113, vitaminD: 40 } },
@@ -1086,6 +1156,16 @@ const FOOD_DB = [
   { name: "Ketchup", cat: "other", cal: 101, p: 1.2, c: 26, f: 0.1 },
   { name: "Hummus", cat: "other", cal: 166, p: 8, c: 14, f: 10, micro: { iron: 2.4, zinc: 1.8 } },
   { name: "Salsa", cat: "other", cal: 36, p: 1.6, c: 7.5, f: 0.2 },
+  { name: "Almond milk (unsweetened)", cat: "other", cal: 15, p: 0.6, c: 0.6, f: 1.2, micro: { calcium: 188, vitaminD: 25 } },
+  { name: "Oat milk", cat: "other", cal: 47, p: 1, c: 7.5, f: 1.5, micro: { calcium: 120, vitaminD: 25 } },
+  { name: "Soy milk (unsweetened)", cat: "other", cal: 33, p: 3.3, c: 1.2, f: 1.8, micro: { calcium: 123, vitaminD: 25 } },
+  { name: "Soy sauce", cat: "other", cal: 53, p: 8, c: 4.9, f: 0.1, micro: { iron: 1.5 } },
+  { name: "BBQ sauce", cat: "other", cal: 172, p: 0.8, c: 40, f: 0.5 },
+  { name: "Ranch dressing", cat: "other", cal: 449, p: 1, c: 6, f: 47 },
+  { name: "Balsamic vinaigrette", cat: "other", cal: 260, p: 0.5, c: 12, f: 24 },
+  { name: "Popcorn (air-popped)", cat: "other", cal: 387, p: 13, c: 78, f: 4.5, micro: { iron: 3.2, zinc: 3.4 } },
+  { name: "Trail mix", cat: "other", cal: 462, p: 14, c: 44, f: 29, micro: { iron: 2.6, zinc: 2.5, calcium: 60 } },
+  { name: "Pretzels", cat: "other", cal: 380, p: 10, c: 79, f: 2.6, micro: { iron: 3.1 } },
 ];
 
 
@@ -2277,6 +2357,7 @@ function App() {
               hasOverride: nutritionHasOverride,
               foodLog: todaysFoodLog, logFood: logFood, removeFoodLogEntry: removeFoodLogEntry, updateFoodLogGrams: updateFoodLogGrams,
               allFoods: allFoods, completeNutritionDay: completeNutritionDay, nutritionHistory: nutritionHistory,
+              addCustomFood: addCustomFood,
               dayComplete: !!(prog.nutritionDayComplete || {})[nutritionSelectedDate],
               weekOffset: nutritionWeekOffset, setWeekOffset: setNutritionWeekOffset,
               dayIdx: nutritionDayIdx, setDayIdx: setNutritionDayIdx,
@@ -2971,6 +3052,12 @@ function lookupBarcode(barcode) {
     .catch(function () { return { error: "Couldn't reach the food database — check your connection and try again." }; });
 }
 
+function guessFoodCategory(per100) {
+  const pCal = (per100.p || 0) * 4, cCal = (per100.c || 0) * 4, fCal = (per100.f || 0) * 9;
+  if (pCal >= cCal && pCal >= fCal) return "protein";
+  if (fCal >= cCal && fCal >= pCal) return "fat";
+  return "carb";
+}
 function BarcodeLogger(props) {
   const [mode, setMode] = useState("idle"); // idle | scanning | loading | found | error | manual
   const [manualCode, setManualCode] = useState("");
@@ -3079,7 +3166,14 @@ function BarcodeLogger(props) {
       h("div", { style: { display: "flex", gap: 8, marginTop: 8 } },
         h("button", {
           className: "swap-save-btn", style: { flex: 1 },
-          onClick: function () { props.logFood(product.name, grams, product.per100); setMode("idle"); setProduct(null); },
+          onClick: function () {
+            props.logFood(product.name, grams, product.per100);
+            const alreadyKnown = (props.allFoods || []).some(function (f) { return f.name === product.name; });
+            if (props.addCustomFood && !alreadyKnown) {
+              props.addCustomFood(product.name, guessFoodCategory(product.per100), product.per100);
+            }
+            setMode("idle"); setProduct(null);
+          },
         }, "Log It"),
         h("button", { className: "ex-action-btn", onClick: cancel }, "Cancel")
       )
@@ -3547,7 +3641,7 @@ function NutritionTab(props) {
         });
       })
     ),
-    h(FoodSearchLog, { foodLog: props.foodLog, logFood: props.logFood, removeEntry: props.removeFoodLogEntry, updateGrams: props.updateFoodLogGrams, allFoods: props.allFoods }),
+    h(FoodSearchLog, { foodLog: props.foodLog, logFood: props.logFood, removeEntry: props.removeFoodLogEntry, updateGrams: props.updateFoodLogGrams, allFoods: props.allFoods, addCustomFood: props.addCustomFood }),
     !isFutureDay && h("button", { className: "complete-btn", style: { marginBottom: 16 }, onClick: props.completeNutritionDay },
       props.dayComplete ? "✓ Logged — Update" : "Complete This Day"),
     h(SupplementManager, { supplementList: props.supplementList, addSupplement: props.addSupplement, removeSupplement: props.removeSupplement, uiPrefs: props.uiPrefs, updateUiPrefs: props.updateUiPrefs }),
@@ -3584,7 +3678,7 @@ function FoodSearchLog(props) {
     : [];
   return h("div", { style: { marginBottom: 24 } },
     h("div", { className: "food-cat-title" }, "Log Anything Else"),
-    h(BarcodeLogger, { logFood: props.logFood }),
+    h(BarcodeLogger, { logFood: props.logFood, addCustomFood: props.addCustomFood, allFoods: props.allFoods }),
     h("input", {
       type: "text", value: query, onChange: function (e) { setQuery(e.target.value); },
       placeholder: "Or search foods (e.g. \"banana\", \"pizza\", \"rice\")",
