@@ -1010,7 +1010,7 @@ const FOOD_DB = [
   { name: "Cottage cheese (2%)", cat: "protein", cal: 90, p: 11, c: 3.4, f: 2.5, micro: { calcium: 91, selenium: 10, zinc: 0.5 } },
   { name: "Greek yogurt (0%)", cat: "protein", cal: 59, p: 10, c: 3.6, f: 0.4, micro: { calcium: 110, zinc: 0.5 } },
   { name: "Greek yogurt (full fat)", cat: "protein", cal: 97, p: 9, c: 4, f: 5, micro: { calcium: 100, zinc: 0.5 } },
-  { name: "Whey protein powder", cat: "protein", cal: 375, p: 80, c: 8, f: 5, micro: { calcium: 400 } },
+  { name: "Whey protein powder", cat: "protein", cal: 409, p: 83, c: 8, f: 5, micro: { calcium: 400 }, measureByScoop: true }, // ~25g protein per 30g scoop
   { name: "Deli turkey slices", cat: "protein", cal: 104, p: 17, c: 3, f: 2, micro: { selenium: 22, zinc: 1 } },
   { name: "Deli ham slices", cat: "protein", cal: 145, p: 21, c: 1.5, f: 6, micro: { selenium: 25, zinc: 1.8, iron: 0.8 } },
   // Carbs
@@ -1131,9 +1131,16 @@ const GROCERY_UNIT_INFO = {
 };
 function ozOf(g) { return g / 28.3495; }
 function lbOf(g) { return g / 453.592; }
+const SCOOP_GRAMS = 30; // reference serving size for a standard protein powder scoop
 function formatMealItem(item, source) {
   const db = source || FOOD_DB;
   const food = db.filter(function (f) { return f.name === item.name; })[0];
+  // Powders are measured by scoop, not weighed on a kitchen scale like meat — oz doesn't map to
+  // anything a person would actually use. Grams + an approximate scoop count are far more usable.
+  if (food && food.measureByScoop) {
+    const scoops = Math.round((item.grams / SCOOP_GRAMS) * 10) / 10;
+    return Math.round(item.grams) + "g (~" + scoops + " scoop" + (scoops === 1 ? "" : "s") + ") " + item.name;
+  }
   if (food && food.cat === "protein") return ozOf(item.grams).toFixed(1) + "oz " + item.name;
   return Math.round(item.grams) + "g " + item.name;
 }
@@ -1461,6 +1468,8 @@ function freshProgramState(exercises) {
     skipped: {}, customMealOverrides: {}, undoSnapshot: null, exerciseDifficulty: {}, foodLog: {},
     sleepLogs: {},
     dailyWeightLogs: {},
+    supplementLogs: {}, // { [dateKey]: { [supplementId]: true } } — per-program: checking a supplement
+    // off while following one program doesn't mark it checked while viewing another's Nutrition tab.
     supersetGroups: {}, // { [day]: [[exId, exId, ...], ...] } — persists per day, independent of week
     extraDeloadWeeks: [], deloadRecommendation: null,
     nutritionDayComplete: {},
@@ -1481,9 +1490,8 @@ function makeDefaultData() {
     customFoods: [],
     customProgramConfig: null,
     supplementList: [], // shared across all programs — a person's actual regimen isn't tied to which workout program is active
-    supplementLogs: {}, // { [dateKey]: { [supplementId]: true } }
     restTimerSettings: { enabled: false, seconds: 90 }, // client-side post-set rest reminder — no backend involved
-    uiPrefs: { sleepExpanded: true, supplementsBoxExpanded: true, yourSupplementsOpen: false, unscheduledSupplementsOpen: false }, // manual collapse/expand toggles — persisted so they stay as left across tab switches
+    uiPrefs: { sleepExpanded: false, supplementsBoxExpanded: false, yourSupplementsOpen: false, unscheduledSupplementsOpen: false }, // manual collapse/expand toggles — persisted so they stay as left across tab switches
     programs: {
       cutting: freshProgramState(EXERCISES_CUTTING),
       cruise: freshProgramState(EXERCISES_CRUISE),
@@ -1496,20 +1504,29 @@ function makeDefaultData() {
 function normalizeV2(parsed) {
   const validPrograms = ["cutting", "cruise", "hypertrophy", "custom"];
   const customExercises = (parsed.customProgramConfig && parsed.customProgramConfig.exercises) || EMPTY_CUSTOM_EXERCISES;
+  // One-time migration: supplement checked-state used to live at the top level, shared across every
+  // program. Carried into each program's own state below so nothing appears to vanish on the first
+  // load after the per-program change — from here forward each program tracks its own checks
+  // independently, and this legacy field is no longer read once migrated.
+  const legacySupplementLogs = parsed.supplementLogs || null;
+  function withLegacySupplementLogs(saved) {
+    if (!legacySupplementLogs) return saved;
+    const existing = (saved && saved.supplementLogs) || {};
+    return Object.assign({}, saved, { supplementLogs: Object.assign({}, legacySupplementLogs, existing) });
+  }
   return {
     activeProgram: validPrograms.indexOf(parsed.activeProgram) !== -1 ? parsed.activeProgram : "cutting",
     likedFoods: parsed.likedFoods || [],
     customFoods: parsed.customFoods || [],
     customProgramConfig: parsed.customProgramConfig || null,
     supplementList: parsed.supplementList || [],
-    supplementLogs: parsed.supplementLogs || {},
     restTimerSettings: Object.assign({ enabled: false, seconds: 90 }, parsed.restTimerSettings || {}),
-    uiPrefs: Object.assign({ sleepExpanded: true, supplementsBoxExpanded: true, yourSupplementsOpen: false, unscheduledSupplementsOpen: false }, parsed.uiPrefs || {}),
+    uiPrefs: Object.assign({ sleepExpanded: false, supplementsBoxExpanded: false, yourSupplementsOpen: false, unscheduledSupplementsOpen: false }, parsed.uiPrefs || {}),
     programs: {
-      cutting: mergeProgramState((parsed.programs || {}).cutting, EXERCISES_CUTTING),
-      cruise: mergeProgramState((parsed.programs || {}).cruise, EXERCISES_CRUISE),
-      hypertrophy: mergeProgramState((parsed.programs || {}).hypertrophy, EXERCISES_HYPERTROPHY),
-      custom: mergeProgramState((parsed.programs || {}).custom, customExercises),
+      cutting: mergeProgramState(withLegacySupplementLogs((parsed.programs || {}).cutting), EXERCISES_CUTTING),
+      cruise: mergeProgramState(withLegacySupplementLogs((parsed.programs || {}).cruise), EXERCISES_CRUISE),
+      hypertrophy: mergeProgramState(withLegacySupplementLogs((parsed.programs || {}).hypertrophy), EXERCISES_HYPERTROPHY),
+      custom: mergeProgramState(withLegacySupplementLogs((parsed.programs || {}).custom), customExercises),
     },
   };
 }
@@ -2011,12 +2028,14 @@ function App() {
   function toggleSupplementLog(id) {
     // Keyed by whichever day is currently being viewed (matching how the checked-state is read
     // elsewhere), not hardcoded to today — otherwise checking a box while viewing a different day
-    // would silently write into today's log instead of the day actually on screen.
+    // would silently write into today's log instead of the day actually on screen. Saved via
+    // saveProgram (not save) so the checked state lives on the active program only — checking a
+    // supplement off while following Cutting doesn't mark it checked while viewing Cruise's tab.
     const key = nutritionSelectedDate;
-    const dayLog = Object.assign({}, data.supplementLogs[key] || {});
+    const dayLog = Object.assign({}, prog.supplementLogs[key] || {});
     dayLog[id] = !dayLog[id];
-    const newLogs = Object.assign({}, data.supplementLogs, { [key]: dayLog });
-    save(Object.assign({}, data, { supplementLogs: newLogs }));
+    const newLogs = Object.assign({}, prog.supplementLogs, { [key]: dayLog });
+    saveProgram({ supplementLogs: newLogs });
   }
 
   // Calories actually logged for a given real calendar date — deliberately reads only the free-form
@@ -2262,7 +2281,7 @@ function App() {
               weekOffset: nutritionWeekOffset, setWeekOffset: setNutritionWeekOffset,
               dayIdx: nutritionDayIdx, setDayIdx: setNutritionDayIdx,
               selectedDate: nutritionSelectedDate, isToday: nutritionIsToday,
-              supplementList: data.supplementList, supplementLogsToday: data.supplementLogs[nutritionSelectedDate] || {},
+              supplementList: data.supplementList, supplementLogsToday: prog.supplementLogs[nutritionSelectedDate] || {},
               addSupplement: addSupplement, removeSupplement: removeSupplement, toggleSupplementLog: toggleSupplementLog,
               nutrientWarnings: checkCombinedNutrientOverlaps(data.supplementList, prog.foodLog[nutritionSelectedDate] || [], allFoods),
               uiPrefs: data.uiPrefs, updateUiPrefs: updateUiPrefs,
@@ -2338,7 +2357,7 @@ function WorkoutsTab(props) {
   const [pendingSelection, setPendingSelection] = useState([]);
   const day = props.exercises[props.selectedDay];
   useEffect(function () { setGroupingMode(false); setPendingSelection([]); }, [props.selectedDay]);
-  const isRest = day.exercises.length === 0;
+  const isRest = day.exercises.length === 0 && !day.cardio;
   const weekLogs = props.data.logs[props.data.currentWeek] || {};
   const weekSkipped = props.data.skipped[props.data.currentWeek] || {};
   const weekDifficulty = props.data.exerciseDifficulty[props.data.currentWeek] || {};
@@ -2549,7 +2568,7 @@ function WorkoutsTab(props) {
     day.cardio && props.targetHR && h("div", { className: "plan-error", style: { marginBottom: 12 } },
       h("strong", null, "Target heart rate for fat-burning: ~" + props.targetHR + " bpm")
     ),
-    !isRest && h("div", { style: { display: "flex", gap: 8, marginBottom: 12 } },
+    day.exercises.length > 0 && h("div", { style: { display: "flex", gap: 8, marginBottom: 12 } },
       !groupingMode
         ? h("button", { className: "ex-action-btn", onClick: function () { setGroupingMode(true); setPendingSelection([]); } }, "Create Superset")
         : h(React.Fragment, null,
