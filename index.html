@@ -1515,17 +1515,26 @@ function computePhaseWeeks(upToWeek, extraDeloadWeeks) {
   return weeks;
 }
 // Scores one exercise's performance across a completed phase: how many weeks it was actually
-// trained, how many of those hit/exceeded the rep range's ceiling (a real progression event), and
-// how many were rated easy or just right (never "hard").
-function scoreExerciseInPhase(exerciseId, phaseWeeks, logsByWeek, difficultyByWeek, skippedByWeek, range) {
+// trained, how many of those counted as "progressed," and how many were rated easy or just right
+// (never "hard"). Progression normally means hitting/exceeding the fixed rep range's ceiling; when
+// rirMissHistory is provided (RIR mode is active for this exercise), it reuses that exact same
+// miss-tracking already computed and stored by the weekly RIR update instead — a fixed rep ceiling
+// isn't a meaningful concept for an exercise whose target itself moves every week.
+function scoreExerciseInPhase(exerciseId, phaseWeeks, logsByWeek, difficultyByWeek, skippedByWeek, range, rirMissHistory) {
   let trainedWeeks = 0, progressedWeeks = 0, easyRightWeeks = 0;
   phaseWeeks.forEach(function (w) {
     if ((skippedByWeek[w] || {})[exerciseId]) return;
     const setsLogged = ((logsByWeek[w] || {})[exerciseId] || []).filter(Boolean);
     if (setsLogged.length === 0) return;
     trainedWeeks++;
-    const maxReps = Math.max.apply(null, setsLogged.map(function (s) { return s.reps || 0; }));
-    if (maxReps >= range.repHigh) progressedWeeks++;
+    if (rirMissHistory) {
+      // Aligned by trained-week order — rirMissHistory only ever appends for weeks that were
+      // actually trained, in the same order phaseWeeks is walked here.
+      if (rirMissHistory[trainedWeeks - 1] === false) progressedWeeks++;
+    } else {
+      const maxReps = Math.max.apply(null, setsLogged.map(function (s) { return s.reps || 0; }));
+      if (maxReps >= range.repHigh) progressedWeeks++;
+    }
     const rating = (difficultyByWeek[w] || {})[exerciseId];
     if (rating === "easy" || rating === "right") easyRightWeeks++;
   });
@@ -1538,6 +1547,89 @@ function exerciseConsistentlyMet(score) {
   if (score.trainedWeeks === 0) return false;
   return score.progressedWeeks > score.trainedWeeks / 2 && score.easyRightWeeks > score.trainedWeeks / 2;
 }
+
+// ---- RIR mode: an alternative to the plain rep-count autoregulation, for people who want a real
+// progressive proximity-to-failure ramp across a phase instead of a fixed rep range. No subjective
+// input anywhere — reps/weight are typed in exactly as they already are; the app infers whether
+// that week's implicit RIR target was met purely from the numbers, and derives the NEXT week's
+// target from what actually happened, adjusted by however much the schedule itself moved.
+const RIR_SCHEDULE_BLOCKS = [3, 1]; // target RIR per half of a phase: weeks 1-2 -> 3, weeks 3-4 -> 1
+const RIR_REP_CEILING = 20; // past this, a rep count stops being a meaningful "target" on its own
+const RIR_PHASE_LENGTH = 4; // training weeks per phase (matches the existing every-5th-week deload cadence, minus the deload week itself)
+
+// Which target RIR applies to a given week, based on its position within the current phase (1 =
+// first week of the phase). Splits the phase into two halves; generalizes cleanly if the phase
+// length itself ever changes later (e.g. a future tier-based deload cadence).
+function computeTargetRIRForWeek(weekPositionInPhase, phaseLength) {
+  const halfLength = Math.ceil(phaseLength / 2);
+  return weekPositionInPhase <= halfLength ? RIR_SCHEDULE_BLOCKS[0] : RIR_SCHEDULE_BLOCKS[1];
+}
+
+// Derives next week's target rep count from this week's actual performance, shifted by however
+// much the target RIR itself moved between the two weeks. A DROP in target RIR (leave fewer reps
+// in reserve — closer to failure) means MORE reps expected at the same weight, not fewer; holding
+// steady within the same block just carries the actual forward unchanged. Above RIR_REP_CEILING,
+// the excess demand redirects into a weight bump instead (same nextWeightIncrement used everywhere
+// else in this app), rather than showing an unreasonable rep number.
+function computeRirAdjustedTarget(prevActualReps, prevTargetRIR, currentTargetRIR, currentWeight) {
+  if (prevActualReps == null) return { targetReps: null, weightBump: null };
+  const rirDelta = prevTargetRIR - currentTargetRIR; // positive = schedule now wants closer to failure
+  const rawTarget = Math.max(1, prevActualReps + rirDelta);
+  if (rawTarget <= RIR_REP_CEILING) return { targetReps: rawTarget, weightBump: null };
+  return { targetReps: RIR_REP_CEILING, weightBump: nextWeightIncrement(currentWeight) };
+}
+
+// Graded response to a pattern of missing the RIR-adjusted target, mirroring the same severity-
+// escalation philosophy as the plain deload trigger: a short run gets a mild correction, a
+// sustained pattern across the phase escalates to an actual deload recommendation. missHistory is
+// an ordered array of booleans, one per TRAINED week in the current phase so far (true = missed).
+function evaluateRirMissPattern(missHistory) {
+  let trailingConsecutiveMisses = 0;
+  for (let i = missHistory.length - 1; i >= 0; i--) {
+    if (!missHistory[i]) break;
+    trailingConsecutiveMisses++;
+  }
+  const missedCount = missHistory.filter(Boolean).length;
+  const shouldEscalateToDeload = missHistory.length >= 2 && missedCount > missHistory.length / 2;
+  const shouldRecalibrate = !shouldEscalateToDeload && trailingConsecutiveMisses >= 2;
+  return { shouldRecalibrate: shouldRecalibrate, shouldEscalateToDeload: shouldEscalateToDeload, trailingConsecutiveMisses: trailingConsecutiveMisses };
+}
+
+// Ties the three pieces above together into the one full update completeWeek() runs per RIR-mode
+// exercise: was this week's target met, what's the updated miss-history (resetting at a phase
+// boundary), does the miss pattern call for recalibrating or escalating to a deload, and what's the
+// actual target (with recalibration/ceiling applied) for the upcoming week. Recalibration dampens
+// the SCHEDULE'S demanded step specifically (not the carried-forward actual) — only half the normal
+// delta gets applied, rather than the full ramp, when a short run of misses suggests the pace is
+// currently too aggressive for this particular exercise.
+function computeNextWeekRirUpdate(prevActualReps, prevWeekTargetReps, priorMissHistory, prevWeekPositionInPhase, nextWeekPositionInPhase, phaseLength, currentWeight) {
+  const startingNewPhase = nextWeekPositionInPhase === 1 && prevWeekPositionInPhase !== 1;
+  const missedThisWeek = prevWeekTargetReps != null && prevActualReps != null && prevActualReps < prevWeekTargetReps;
+  const baseMissHistory = startingNewPhase ? [] : (priorMissHistory || []).slice();
+  const missHistory = prevActualReps != null ? baseMissHistory.concat([missedThisWeek]) : baseMissHistory;
+  const pattern = evaluateRirMissPattern(missHistory);
+
+  const prevTargetRIR = computeTargetRIRForWeek(prevWeekPositionInPhase, phaseLength);
+  const nextTargetRIR = computeTargetRIRForWeek(nextWeekPositionInPhase, phaseLength);
+  let computed = computeRirAdjustedTarget(prevActualReps, prevTargetRIR, nextTargetRIR, currentWeight);
+
+  if (pattern.shouldRecalibrate && prevActualReps != null) {
+    const fullDelta = prevTargetRIR - nextTargetRIR;
+    const dampenedDelta = Math.round(fullDelta / 2);
+    const dampenedRaw = Math.max(1, prevActualReps + dampenedDelta);
+    computed = dampenedRaw <= RIR_REP_CEILING
+      ? { targetReps: dampenedRaw, weightBump: null }
+      : { targetReps: RIR_REP_CEILING, weightBump: nextWeightIncrement(currentWeight) };
+  }
+
+  return {
+    missHistory: missHistory,
+    shouldEscalateToDeload: pattern.shouldEscalateToDeload,
+    targetReps: computed.targetReps,
+    weightBump: computed.weightBump,
+  };
+}
+
 const VOLUME_CEILING_PER_MUSCLE = 20; // weekly sets per muscle group — sits at the point multiple
 // sources agree returns clearly start flattening; deloads exist specifically to walk volume back
 // down before building toward this again, so it's a backstop, not a target to reach quickly.
@@ -1546,7 +1638,7 @@ const VOLUME_CEILING_PER_MUSCLE = 20; // weekly sets per muscle group — sits a
 // "consistently met," and adding a set wouldn't push the group's weekly total past the ceiling).
 // The exercise chosen to receive the added set is whichever qualifying exercise showed the
 // strongest signal — most weeks progressed, ties broken by most weeks rated easy/just-right.
-function evaluateVolumeIncrease(allExercisesFlat, phaseWeeks, logsByWeek, difficultyByWeek, skippedByWeek, exerciseStateSource) {
+function evaluateVolumeIncrease(allExercisesFlat, phaseWeeks, logsByWeek, difficultyByWeek, skippedByWeek, exerciseStateSource, rirModeEnabled) {
   const byMuscle = {};
   allExercisesFlat.forEach(function (ex) {
     const state = exerciseStateSource[ex.id] || {};
@@ -1562,7 +1654,7 @@ function evaluateVolumeIncrease(allExercisesFlat, phaseWeeks, logsByWeek, diffic
     exercises.forEach(function (ex) {
       const state = exerciseStateSource[ex.id] || {};
       const range = effectiveRepRange(ex, state);
-      scores[ex.id] = scoreExerciseInPhase(ex.id, phaseWeeks, logsByWeek, difficultyByWeek, skippedByWeek, range);
+      scores[ex.id] = scoreExerciseInPhase(ex.id, phaseWeeks, logsByWeek, difficultyByWeek, skippedByWeek, range, rirModeEnabled ? (state.rirMissHistory || []) : null);
     });
     const qualifying = exercises.filter(function (ex) { return exerciseConsistentlyMet(scores[ex.id]); });
     if (qualifying.length === 0 || qualifying.length / exercises.length <= 0.5) return;
@@ -1723,6 +1815,11 @@ function makeDefaultData() {
     // history (sets per week) stays per-program as before, since each program has its own calendar
     // of weeks — only the "where am I at right now" state is shared.
     sharedExerciseState: {},
+    // RIR mode toggle for Cutting/Cruise/Hypertrophy — shared across all three, same reasoning as
+    // sharedExerciseState above (they share the same exercises, so the mode shouldn't behave
+    // differently depending on which of the three happens to be active). Custom's own toggle lives
+    // in customProgramConfig instead, since Custom doesn't participate in this sharing at all.
+    sharedRirModeEnabled: false,
     uiPrefs: { sleepExpanded: true, supplementsBoxExpanded: false, yourSupplementsOpen: false, unscheduledSupplementsOpen: false }, // manual collapse/expand toggles — persisted so they stay as left across tab switches
     programs: {
       cutting: freshProgramState(EXERCISES_CUTTING),
@@ -1765,6 +1862,7 @@ function normalizeV2(parsed) {
     supplementList: parsed.supplementList || [],
     restTimerSettings: Object.assign({ enabled: false, seconds: 90 }, parsed.restTimerSettings || {}),
     sharedExerciseState: sharedExerciseState,
+    sharedRirModeEnabled: !!parsed.sharedRirModeEnabled,
     uiPrefs: Object.assign({ sleepExpanded: true, supplementsBoxExpanded: false, yourSupplementsOpen: false, unscheduledSupplementsOpen: false }, parsed.uiPrefs || {}),
     programs: {
       cutting: mergeProgramState(withLegacySupplementLogs((parsed.programs || {}).cutting), EXERCISES_CUTTING),
@@ -1827,6 +1925,7 @@ function App() {
   });
   const [expanded, setExpanded] = useState({});
   const [toast, setToast] = useState("");
+  const [showEditProgramSettings, setShowEditProgramSettings] = useState(false);
   const [nutritionViewWeek, setNutritionViewWeek] = useState(null);
   const [customPlan, setCustomPlan] = useState(null);
   const [groceryViewWeek, setGroceryViewWeek] = useState(null);
@@ -1903,6 +2002,9 @@ function App() {
   // align with anything, so it keeps its own separate, per-program exerciseState as before.
   const isSharedProgram = data.activeProgram !== "custom";
   const effectiveExerciseState = isSharedProgram ? (data.sharedExerciseState || {}) : prog.exerciseState;
+  // Same shared-vs-per-program split as exerciseState itself, since the toggle is fundamentally
+  // about how that shared state's rep targets get computed for the exercises it covers.
+  const rirModeEnabled = isSharedProgram ? !!data.sharedRirModeEnabled : !!(data.customProgramConfig && data.customProgramConfig.rirModeEnabled);
   function saveExerciseState(newState) {
     if (isSharedProgram) save(Object.assign({}, data, { sharedExerciseState: newState }));
     else saveProgram({ exerciseState: newState });
@@ -1992,7 +2094,10 @@ function App() {
     // field has actually been filled in, weight arrives here as 0. That's not a real logged weight;
     // treating it as one would compute a decrement/increment off 0 and permanently corrupt the
     // session adjustment to 0 for the rest of that exercise's sets this week.
-    if (!isBodyweight && reps != null && weight != null && weight > 0) {
+    // Also skipped entirely when RIR mode is on: that mode's own progression is computed once, at
+    // completeWeek() time, from the week's actual performance — the two systems would otherwise
+    // fight over the same rep target using two different definitions of "on track."
+    if (!rirModeEnabled && !isBodyweight && reps != null && weight != null && weight > 0) {
       let adjustment = null;
       if (targetRepLow != null && reps <= targetRepLow * 0.5) {
         adjustment = { weight: nextWeightDecrement(weight), repsTarget: currentRepsTarget };
@@ -2034,6 +2139,7 @@ function App() {
     const weekDifficulty = prog.exerciseDifficulty[week] || {};
     const newState = Object.assign({}, effectiveExerciseState);
     const weekAdjustments = prog.sessionAdjustments[week] || {};
+    const rirEscalatedExercises = [];
     allExercises(def.exercises).forEach(function (ex) {
       if (weekSkipped[ex.id]) return;
       const setsLogged = (weekLogs[ex.id] || []).filter(Boolean);
@@ -2043,10 +2149,35 @@ function App() {
       const rawCur = Object.assign({ weight: ex.weight, repsTarget: ex.repLow, nameOverride: null }, newState[ex.id] || {});
       const cur = weekAdjustments[ex.id] != null ? Object.assign({}, rawCur, weekAdjustments[ex.id]) : rawCur;
       if (setsLogged.length === 0) return;
+      const maxReps = Math.max.apply(null, setsLogged.map(function (s) { return s.reps || 0; }));
+
+      if (rirModeEnabled) {
+        // Position within the current phase — computePhaseWeeks naturally returns an empty array
+        // (length 0) for a deload week itself, since its own isDeload check breaks the loop before
+        // ever pushing that week. That gives a free, correct signal for "this week (or the upcoming
+        // one) is a deload" without any separate special-casing.
+        const prevWeekPositionInPhase = computePhaseWeeks(week, prog.extraDeloadWeeks).length;
+        const nextWeekPositionInPhase = computePhaseWeeks(week + 1, prog.extraDeloadWeeks).length;
+        if (prevWeekPositionInPhase === 0 || nextWeekPositionInPhase === 0) {
+          // A deload week just finished, or is coming up next — hold flat rather than advancing the
+          // ramp; deload weeks are recovery, not part of the progressive proximity-to-failure schedule.
+          newState[ex.id] = cur;
+          return;
+        }
+        const update = computeNextWeekRirUpdate(maxReps, cur.rirTargetReps, cur.rirMissHistory, prevWeekPositionInPhase, nextWeekPositionInPhase, RIR_PHASE_LENGTH, cur.weight);
+        if (update.shouldEscalateToDeload) rirEscalatedExercises.push({ exerciseId: ex.id, exerciseName: cur.nameOverride || ex.name });
+        newState[ex.id] = Object.assign({}, cur, {
+          weight: update.weightBump != null ? update.weightBump : cur.weight,
+          repsTarget: update.targetReps != null ? update.targetReps : cur.repsTarget,
+          rirTargetReps: update.targetReps,
+          rirMissHistory: update.missHistory,
+        });
+        return;
+      }
+
       const rating = weekDifficulty[ex.id];
       if (!rating) return; // no rating given at all — no signal to act on, hold
       const range = effectiveRepRange(ex, cur);
-      const maxReps = Math.max.apply(null, setsLogged.map(function (s) { return s.reps || 0; }));
       if (rating === "hard") {
         // Too difficult — weight still holds, but the rep target now reflects what was actually
         // achieved (their best set that week) instead of freezing at whatever the old target was
@@ -2069,7 +2200,7 @@ function App() {
     // both are phase-boundary judgments. Requires an explicit accept, same as every other
     // consequential suggestion in this app; never applied silently.
     const volumeIncreaseRecommendations = nextWeekAlreadyDeload
-      ? evaluateVolumeIncrease(allExercises(def.exercises), computePhaseWeeks(week, prog.extraDeloadWeeks), Object.assign({}, prog.logs, { [week]: weekLogs }), prog.exerciseDifficulty, prog.skipped, newState)
+      ? evaluateVolumeIncrease(allExercises(def.exercises), computePhaseWeeks(week, prog.extraDeloadWeeks), Object.assign({}, prog.logs, { [week]: weekLogs }), prog.exerciseDifficulty, prog.skipped, newState, rirModeEnabled)
       : [];
     const ratings = Object.keys(weekDifficulty).map(function (id) { return weekDifficulty[id]; });
     const totalRated = ratings.length;
@@ -2098,6 +2229,17 @@ function App() {
           weeks: STALL_WINDOW,
         };
       }
+    }
+    // Third, independent trigger: RIR mode's own graded miss-pattern response. A majority of an
+    // exercise's trained weeks this phase missing its RIR-adjusted target means it's effectively
+    // been training closer to failure than the schedule intended, for most of the phase — the same
+    // underlying signal as accumulating fatigue, just read from actual-vs-target reps instead of a
+    // subjective rating.
+    if (!recommendation && !nextWeekAlreadyDeload && rirEscalatedExercises.length > 0) {
+      recommendation = {
+        forWeek: week + 1, reason: "rir",
+        exercises: rirEscalatedExercises,
+      };
     }
     const newProgramPatch = { currentWeek: week + 1, undoSnapshot: snapshot, deloadRecommendation: recommendation, volumeIncreaseRecommendations: volumeIncreaseRecommendations };
     if (!isSharedProgram) newProgramPatch.exerciseState = newState;
@@ -2577,6 +2719,21 @@ function App() {
     const newPrograms = Object.assign({}, data.programs, { custom: freshProgramState(EMPTY_CUSTOM_EXERCISES) });
     save(Object.assign({}, data, { customProgramConfig: null, programs: newPrograms }));
   }
+  // Toggles RIR mode for whichever program is currently active — routes to the same shared-vs-
+  // per-program storage exerciseState itself already uses, since the two are fundamentally tied
+  // together (the mode changes how that state's rep targets get computed).
+  function toggleRirMode() {
+    if (isSharedProgram) {
+      save(Object.assign({}, data, { sharedRirModeEnabled: !rirModeEnabled }));
+    } else {
+      const config = data.customProgramConfig;
+      if (!config) return;
+      save(Object.assign({}, data, { customProgramConfig: Object.assign({}, config, { rirModeEnabled: !rirModeEnabled }) }));
+    }
+    showToast(rirModeEnabled
+      ? "RIR mode turned off — back to fixed rep ranges"
+      : "RIR mode turned on — targets will build from your logged reps starting this phase");
+  }
 
   function applyPlanToWeek(week, planResults) {
     const override = {};
@@ -2647,7 +2804,7 @@ function App() {
               selectedDay: selectedDay, setSelectedDay: setSelectedDay, data: Object.assign({}, prog, { exerciseState: effectiveExerciseState }), exercises: def.exercises, isDeloadWeek: isDeloadWeek,
               expanded: expanded, setExpanded: setExpanded, logSet: logSet, completeDay: completeDay,
               toggleSkip: toggleSkip, setSwap: setSwap, clearSwap: clearSwap, setWeekSwap: setWeekSwap, clearWeekSwap: clearWeekSwap,
-              isSharedProgram: isSharedProgram, clearExerciseHistory: clearExerciseHistory, setMuscleOverride: setMuscleOverride,
+              isSharedProgram: isSharedProgram, clearExerciseHistory: clearExerciseHistory, setMuscleOverride: setMuscleOverride, rirModeEnabled: rirModeEnabled,
               undoCompleteWeek: undoCompleteWeek, updateExerciseNote: updateExerciseNote,
               setExerciseDifficulty: setExerciseDifficulty, color: def.color,
               targetHR: (data.customProgramConfig && data.customProgramConfig.age) ? Math.round((220 - data.customProgramConfig.age) * 0.65) : null,
@@ -2702,7 +2859,42 @@ function App() {
               plan: customPlan, setPlan: setCustomPlan, slots: def.slots,
               allFoods: allFoods, customFoods: data.customFoods || [], addCustomFood: addCustomFood, removeCustomFood: removeCustomFood,
             }),
-            def.needsSetup === false && data.activeProgram === "custom" && h("button", { className: "reset-list-btn", style: { margin: "16px" }, onClick: resetCustomSetup }, "Redo Custom program setup")
+            def.needsSetup === false && data.activeProgram === "custom" && h("div", { style: { margin: "16px" } },
+              h("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
+                h("button", { className: "ex-action-btn", onClick: function () { setShowEditProgramSettings(!showEditProgramSettings); } }, "Edit Program Settings"),
+                h("button", { className: "reset-list-btn", style: { flex: 1, marginBottom: 0 }, onClick: resetCustomSetup }, "Redo Custom program setup")
+              ),
+              // No macro-recalculation fields here (unlike the case-study version) — this program's
+              // Custom setup never had that feature built for it, so this panel exists purely to
+              // carry the RIR toggle rather than porting unrelated infrastructure along with it.
+              showEditProgramSettings && h("div", { style: { marginTop: 8 } },
+                h("div", { className: "food-cat-title" }, "RIR Mode"),
+                h("p", { style: { fontSize: "11px", color: "#737373", margin: "4px 0 8px" } },
+                  "Instead of a fixed rep range, your target rep count builds from what you actually logged last week, following a progressive schedule that pushes closer to failure across each phase and eases off again after each deload. Existing per-set weight adjustments turn off while this is on — reps are typed in exactly as they already are, nothing new to enter."),
+                h("button", {
+                  className: "ex-action-btn", style: { width: "100%" },
+                  onClick: toggleRirMode,
+                }, rirModeEnabled ? "Turn Off RIR Mode" : "Turn On RIR Mode")
+              )
+            ),
+            // Cutting/Cruise/Hypertrophy don't have a wizard, so there's no weight/activity/diet-
+            // style to recalculate here — this panel exists purely to carry the RIR mode toggle,
+            // shared across all three the same way their exercise progression already is.
+            isSharedProgram && h("div", { style: { margin: "16px" } },
+              h("button", {
+                className: "ex-action-btn", style: { width: "100%" },
+                onClick: function () { setShowEditProgramSettings(!showEditProgramSettings); },
+              }, "Edit Program Settings"),
+              showEditProgramSettings && h("div", { style: { marginTop: 8 } },
+                h("div", { className: "food-cat-title" }, "RIR Mode"),
+                h("p", { style: { fontSize: "11px", color: "#737373", margin: "4px 0 8px" } },
+                  "Instead of a fixed rep range, your target rep count builds from what you actually logged last week, following a progressive schedule that pushes closer to failure across each phase and eases off again after each deload. Existing per-set weight adjustments turn off while this is on — reps are typed in exactly as they already are, nothing new to enter. Shared across Cutting, Cruise, and Hypertrophy, same as your exercise progression already is."),
+                h("button", {
+                  className: "ex-action-btn", style: { width: "100%" },
+                  onClick: toggleRirMode,
+                }, rirModeEnabled ? "Turn Off RIR Mode" : "Turn On RIR Mode")
+              )
+            )
           ),
           h("nav", { className: "navbar" },
             h(TabButton, { Icon: Dumbbell, label: "Workouts", active: tab === "workouts", onClick: function () { setTab("workouts"); } }),
@@ -2865,7 +3057,9 @@ function WorkoutsTab(props) {
             isSkipped
               ? "Skipped this week"
               : (ex.bodyweight ? "Bodyweight" : state.weight + "lb") + " · " + setsToday + "×" +
-                (ex.isFailure ? "to failure (target " + state.repsTarget + ", range " + range.repLow + "–" + range.repHigh + ")" : state.repsTarget + " (range " + range.repLow + "–" + range.repHigh + ")"),
+                (props.rirModeEnabled && state.rirTargetReps != null
+                  ? state.rirTargetReps + " reps (this phase's target)"
+                  : ex.isFailure ? "to failure (target " + state.repsTarget + ", range " + range.repLow + "–" + range.repHigh + ")" : state.repsTarget + " (range " + range.repLow + "–" + range.repHigh + ")"),
             sessionAdjustmentDirection === "down" && h("span", { style: { color: "#f0b429" } }, " · reduced this session after a big rep miss"),
             sessionAdjustmentDirection === "up" && h("span", { style: { color: "#4eba6f" } }, " · increased this session after beating the top of your range"),
             loggedCount > 0 && !isSkipped && h("span", { className: "done" }, " · " + loggedCount + "/" + setsToday + " logged"),
@@ -3015,6 +3209,8 @@ function WorkoutsTab(props) {
       h("p", { style: { margin: "0 0 8px" } },
         props.deloadRecommendation.reason === "performance"
           ? ("Progress has stalled — " + props.deloadRecommendation.stalledCount + " of " + props.deloadRecommendation.consideredCount + " exercises you've trained consistently haven't set a new best in " + props.deloadRecommendation.weeks + " weeks. Worth taking this week as a deload?")
+          : props.deloadRecommendation.reason === "rir"
+          ? ("Most of this phase, " + props.deloadRecommendation.exercises.map(function (e) { return e.exerciseName; }).join(", ") + " came in under the expected reps for where you are in the ramp — that's effectively training closer to failure than planned. Worth taking this week as a deload?")
           : ("Last week ran heavy — " + props.deloadRecommendation.pct + "% of rated exercises came back Too Difficult. Worth taking this week as a deload?")),
       h("div", { style: { display: "flex", gap: 8 } },
         h("button", { className: "swap-save-btn", style: { flex: 1 }, onClick: props.acceptDeloadRecommendation }, "Yes, deload this week"),
