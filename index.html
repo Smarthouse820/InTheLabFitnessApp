@@ -2176,13 +2176,13 @@ function App() {
     if (patch.enabled === true && !cur.enabled) {
       subscribeToPush().then(function (ok) {
         save(Object.assign({}, data, { pushSettings: Object.assign({}, cur, { enabled: !!ok }) }));
-        if (ok) setToast("Reminders on");
+        if (ok) showToast("Reminders on");
       });
       return;
     }
     if (patch.enabled === false && cur.enabled) {
       unsubscribeFromPush();
-      setToast("Reminders off");
+      showToast("Reminders off");
     }
     save(Object.assign({}, data, { pushSettings: Object.assign({}, cur, patch) }));
   }
