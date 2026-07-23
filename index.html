@@ -1807,6 +1807,8 @@ function makeDefaultData() {
     customProgramConfig: null,
     supplementList: [], // shared across all programs — a person's actual regimen isn't tied to which workout program is active
     restTimerSettings: { enabled: false, seconds: 90 }, // client-side post-set rest reminder — no backend involved
+    pushSettings: { enabled: false }, // opt-in push reminders (meals/hydration/supplements) via the Worker
+    reminderTimes: { weighIn: "", trainingTime: "", trainingDays: [] }, // user-set times for weigh-in (daily) + training (day-specific)
     // Cutting, Cruise, and Hypertrophy use identical exercise ids/names (Cruise/Hypertrophy are
     // literal copies of Cutting with only sets/cardio tweaked) — so unlike Custom, whose exercises
     // are generated per-user and don't align with anything, these three genuinely share the same
@@ -1861,6 +1863,8 @@ function normalizeV2(parsed) {
     customProgramConfig: parsed.customProgramConfig || null,
     supplementList: parsed.supplementList || [],
     restTimerSettings: Object.assign({ enabled: false, seconds: 90 }, parsed.restTimerSettings || {}),
+    pushSettings: Object.assign({ enabled: false }, parsed.pushSettings || {}),
+    reminderTimes: Object.assign({ weighIn: "", trainingTime: "", trainingDays: [] }, parsed.reminderTimes || {}),
     sharedExerciseState: sharedExerciseState,
     sharedRirModeEnabled: !!parsed.sharedRirModeEnabled,
     uiPrefs: Object.assign({ sleepExpanded: true, supplementsBoxExpanded: false, yourSupplementsOpen: false, unscheduledSupplementsOpen: false }, parsed.uiPrefs || {}),
@@ -1914,6 +1918,103 @@ function fireRestNotification(label) {
   } else {
     try { new Notification(title, opts); } catch (e) {}
   }
+}
+
+// ---- Push notifications: fixed-time reminders (meals / hydration / timed supplements) ----
+// The app reads the user's own times out of its existing data and syncs them to the Cloudflare
+// Worker, which fires the notifications on a 15-min cron. This is the client half; the Worker is
+// the sender. Weigh-ins and training are NOT here yet (no stored time); daysOfWeek is supported by
+// the Worker but omitted for these daily items.
+const PUSH_WORKER_URL = "https://itl-fitness-worker.itlapp.workers.dev";
+const PUSH_VAPID_PUBLIC_KEY = "BG7_O-gdtwFvWvO17pGcwNO49sMHFxUmBCgyL-zyaw_MuiZ8VHrE5-V1Hd25pq390AaG7KkWqG4G_HI9Ozv5ke8";
+
+function urlB64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(base64);
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
+
+// Anonymous, persistent device id — no login, generated once, kept locally. This is how the Worker
+// tells one device's schedule apart from another's.
+function getOrCreatePushId() {
+  let id = localStorage.getItem("itl_push_id");
+  if (!id) {
+    id = "id_" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    localStorage.setItem("itl_push_id", id);
+  }
+  return id;
+}
+
+// minutes-from-midnight -> "HH:MM" (24h, zero-padded) for the Worker's parseHHMM.
+function minutesToHHMM(mins) {
+  const hh = Math.floor(mins / 60), mm = mins % 60;
+  return String(hh).padStart(2, "0") + ":" + String(mm).padStart(2, "0");
+}
+
+// Builds the schedule array the Worker checks every 15 min, from the app's own data. Reuses
+// parseMealTimeToMinutes (handles "4:00 AM", "12:00 PM", the "5:45-7:00 AM" range -> start, and
+// 24h "20:30" supplement times). MERGE MODE: entries at the same time collapse into a single
+// notification, so overlapping meal/hydration/supplement moments fire once, not several times.
+function buildPushSchedule(data) {
+  const byTime = {}; // "HH:MM" -> { parts: [labels], ids: [ids] }
+  function add(hhmm, label, id) {
+    if (!byTime[hhmm]) byTime[hhmm] = { parts: [], ids: [] };
+    byTime[hhmm].parts.push(label);
+    byTime[hhmm].ids.push(id);
+  }
+  // Meals — active program's meal times (times are stable across weeks; use the first week's).
+  try {
+    const def = data.activeProgram === "custom"
+      ? buildCustomProgramDef(data.customProgramConfig)
+      : PROGRAM_DEFS[data.activeProgram];
+    if (def && def.mealsByWeek) {
+      const weekKeys = Object.keys(def.mealsByWeek).sort(function (a, b) { return Number(a) - Number(b); });
+      const meals = weekKeys.length ? def.mealsByWeek[weekKeys[0]] : [];
+      (meals || []).forEach(function (m) {
+        const mins = parseMealTimeToMinutes(m.time);
+        if (mins == null) return;
+        add(minutesToHHMM(mins), m.name || "Meal", "meal-" + m.id);
+      });
+    }
+  } catch (e) { /* if a program def can't build, skip meals rather than break the whole sync */ }
+  // Hydration — the shared HYDRATION checkpoints.
+  (typeof HYDRATION !== "undefined" ? HYDRATION : []).forEach(function (hy) {
+    const mins = parseMealTimeToMinutes(hy.time);
+    if (mins == null) return;
+    add(minutesToHHMM(mins), "Hydration (" + hy.label + ")", "hydration-" + hy.id);
+  });
+  // Timed supplements — supplementList entries with a time; as-needed (no time) are skipped.
+  (data.supplementList || []).forEach(function (supp) {
+    if (!supp || !supp.time) return;
+    const mins = parseMealTimeToMinutes(supp.time);
+    if (mins == null) return;
+    add(minutesToHHMM(mins), supp.name || "Supplement", "supp-" + supp.id);
+  });
+  // Daily weigh-in reminder — user-set time (blank = off). Daily, so it joins the merge map.
+  const rt = data.reminderTimes || {};
+  if (rt.weighIn) {
+    const mins = parseMealTimeToMinutes(rt.weighIn);
+    if (mins != null) add(minutesToHHMM(mins), "Weigh-in", "weighin-daily");
+  }
+  // Collapse DAILY items to one entry per time. Stable id = sorted member ids joined, so the dedup
+  // key only changes when the actual grouping changes.
+  const daily = Object.keys(byTime).sort().map(function (hhmm) {
+    const g = byTime[hhmm];
+    return { id: g.ids.slice().sort().join("+"), time: hhmm, label: g.parts.join(", ") };
+  });
+  // Training reminder — day-specific, so it must NOT be merged with daily items (merging would
+  // either drop its daysOfWeek or wrongly apply its days to a meal). Emit it as its own entry.
+  const extra = [];
+  if (rt.trainingTime && Array.isArray(rt.trainingDays) && rt.trainingDays.length) {
+    const mins = parseMealTimeToMinutes(rt.trainingTime);
+    if (mins != null) {
+      extra.push({ id: "training", time: minutesToHHMM(mins), label: "Training", daysOfWeek: rt.trainingDays.slice().sort(function (a, b) { return a - b; }) });
+    }
+  }
+  return daily.concat(extra);
 }
 
 function App() {
@@ -1988,6 +2089,104 @@ function App() {
       Notification.requestPermission();
     }
   }
+
+  // ---- Push reminders (meals / hydration / timed supplements) ----
+  async function syncPushSchedule(currentData) {
+    // Only sync if opted in AND permission granted AND a live subscription exists.
+    if (!currentData.pushSettings || !currentData.pushSettings.enabled) return;
+    if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (!sub) return;
+      await fetch(PUSH_WORKER_URL + "/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: getOrCreatePushId(),
+          subscription: sub.toJSON(),
+          schedule: buildPushSchedule(currentData),
+          timezoneOffsetMinutes: new Date().getTimezoneOffset(),
+        }),
+      });
+    } catch (e) { /* network hiccup — will re-sync on next relevant change or reload */ }
+  }
+  async function subscribeToPush() {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+      setToast("Notifications aren't supported in this browser");
+      return false;
+    }
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted") { setToast("Notification permission not granted"); return false; }
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlB64ToUint8Array(PUSH_VAPID_PUBLIC_KEY),
+    });
+    await fetch(PUSH_WORKER_URL + "/subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: getOrCreatePushId(),
+        subscription: sub.toJSON(),
+        schedule: buildPushSchedule(data),
+        timezoneOffsetMinutes: new Date().getTimezoneOffset(),
+      }),
+    });
+    return true;
+  }
+  async function unsubscribeFromPush() {
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) await sub.unsubscribe();
+    } catch (e) {}
+    try {
+      await fetch(PUSH_WORKER_URL + "/unsubscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: getOrCreatePushId() }),
+      });
+    } catch (e) {}
+  }
+  // Mirrors updateRestTimerSettings: flip the flag, then do the subscribe/unsubscribe side effect.
+  function updatePushSettings(patch) {
+    const cur = data.pushSettings || { enabled: false };
+    if (patch.enabled === true && !cur.enabled) {
+      subscribeToPush().then(function (ok) {
+        save(Object.assign({}, data, { pushSettings: { enabled: !!ok } }));
+        if (ok) setToast("Reminders on");
+      });
+      return;
+    }
+    if (patch.enabled === false && cur.enabled) {
+      unsubscribeFromPush();
+      setToast("Reminders off");
+    }
+    save(Object.assign({}, data, { pushSettings: Object.assign({}, cur, patch) }));
+  }
+  // Weigh-in / training reminder times. Because buildPushSchedule reads reminderTimes, saving here
+  // changes pushScheduleKey and the sync effect below re-POSTs the updated schedule automatically.
+  function updateReminderTimes(patch) {
+    const cur = data.reminderTimes || { weighIn: "", trainingTime: "", trainingDays: [] };
+    save(Object.assign({}, data, { reminderTimes: Object.assign({}, cur, patch) }));
+  }
+  function toggleTrainingDay(dow) {
+    const cur = data.reminderTimes || {};
+    const days = (cur.trainingDays || []).slice();
+    const i = days.indexOf(dow);
+    if (i === -1) days.push(dow); else days.splice(i, 1);
+    updateReminderTimes({ trainingDays: days });
+  }
+  // Re-sync whenever the built schedule actually changes (program switch, supplement edit) or on
+  // mount. Keying the effect on the serialized schedule avoids redundant network calls.
+  const pushScheduleKey = (data.pushSettings && data.pushSettings.enabled)
+    ? JSON.stringify(buildPushSchedule(data)) : "";
+  useEffect(function () {
+    if (data.pushSettings && data.pushSettings.enabled) syncPushSchedule(data);
+  }, [pushScheduleKey]);
+
   // Persists manual collapse/expand toggles (Sleep, Supplements box, Your/Unscheduled Supplements)
   // so they stay exactly as left across tab switches, rather than resetting on every remount.
   function updateUiPrefs(patch) {
@@ -2366,6 +2565,7 @@ function App() {
   const activeMeals = meals.filter(function (m) { const e = nToday[m.id]; return !e || e.status !== "skip"; });
   const activeMealTotals = activeMeals.reduce(function (a, m) { return { cal: a.cal + m.cal, p: a.p + m.p, c: a.c + m.c, f: a.f + m.f }; }, { cal: 0, p: 0, c: 0, f: 0 });
   const todaysFoodLog = prog.foodLog[nutritionSelectedDate] || [];
+  const quickAddFoods = computeQuickAddFoods(prog.foodLog, 8); // recent/frequent foods for one-tap re-log
   const macroProgress = meals.reduce(function (a, m) {
     const e = nToday[m.id];
     if (!e || e.status === "skip") return a;
@@ -2815,12 +3015,15 @@ function App() {
               acceptVolumeIncreaseRecommendation: acceptVolumeIncreaseRecommendation,
               dismissVolumeIncreaseRecommendation: dismissVolumeIncreaseRecommendation,
               restTimerSettings: data.restTimerSettings, updateRestTimerSettings: updateRestTimerSettings,
+              pushSettings: data.pushSettings, updatePushSettings: updatePushSettings,
+              reminderTimes: data.reminderTimes, updateReminderTimes: updateReminderTimes, toggleTrainingDay: toggleTrainingDay,
               startRestTimer: startRestTimer, skipRestTimer: skipRestTimer,
             }),
             tab === "nutrition" && h(NutritionTab, {
               nToday: nToday, setMealStatus: setMealStatus, clearMealStatus: clearMealStatus, macroProgress: macroProgress, meals: meals, mealTotals: activeMealTotals,
               hasOverride: nutritionHasOverride,
               foodLog: todaysFoodLog, logFood: logFood, removeFoodLogEntry: removeFoodLogEntry, updateFoodLogGrams: updateFoodLogGrams,
+              quickFoods: quickAddFoods,
               allFoods: allFoods, completeNutritionDay: completeNutritionDay, nutritionHistory: nutritionHistory,
               addCustomFood: addCustomFood,
               dayComplete: !!(prog.nutritionDayComplete || {})[nutritionSelectedDate],
@@ -3256,6 +3459,58 @@ function WorkoutsTab(props) {
               },
             }, "Confirm Superset (" + pendingSelection.length + " selected)")
           )
+    ),
+    h("div", { className: "panel", style: { marginBottom: 12, padding: "10px 14px", background: "#0a0a0a", border: "1px solid #404040", borderRadius: 8 } },
+      h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
+        h("span", { style: { fontSize: 13 } }, "Meal / Hydration / Supplement Reminders"),
+        h("div", { style: { display: "flex", gap: 6 } },
+          h("button", {
+            className: "ex-action-btn",
+            style: Object.assign({ flex: "0 0 auto", padding: "6px 14px" }, (props.pushSettings && props.pushSettings.enabled) ? { background: "#1d4ed8", color: "#fff", borderColor: "#1d4ed8" } : {}),
+            onClick: function () { props.updatePushSettings({ enabled: true }); },
+          }, "On"),
+          h("button", {
+            className: "ex-action-btn",
+            style: Object.assign({ flex: "0 0 auto", padding: "6px 14px" }, !(props.pushSettings && props.pushSettings.enabled) ? { background: "#262626", color: "#fff" } : {}),
+            onClick: function () { props.updatePushSettings({ enabled: false }); },
+          }, "Off")
+        )
+      ),
+      h("p", { style: { fontSize: 11, color: "#737373", margin: "8px 0 0" } },
+        "Sends reminders at your meal, hydration, and timed-supplement times. Same times shift automatically if you switch programs or edit a supplement."),
+      (props.pushSettings && props.pushSettings.enabled) && h("div", { style: { marginTop: 12, borderTop: "1px solid #262626", paddingTop: 12 } },
+        h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 } },
+          h("span", { style: { fontSize: 13 } }, "Daily weigh-in"),
+          h("input", {
+            type: "time",
+            value: (props.reminderTimes && props.reminderTimes.weighIn) || "",
+            onChange: function (e) { props.updateReminderTimes({ weighIn: e.target.value }); },
+            style: { background: "#0a0a0a", border: "1px solid #404040", borderRadius: 6, padding: "6px 8px", fontSize: 14, color: "#f5f5f5" },
+          })
+        ),
+        h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 } },
+          h("span", { style: { fontSize: 13 } }, "Training"),
+          h("input", {
+            type: "time",
+            value: (props.reminderTimes && props.reminderTimes.trainingTime) || "",
+            onChange: function (e) { props.updateReminderTimes({ trainingTime: e.target.value }); },
+            style: { background: "#0a0a0a", border: "1px solid #404040", borderRadius: 6, padding: "6px 8px", fontSize: 14, color: "#f5f5f5" },
+          })
+        ),
+        h("div", { style: { display: "flex", gap: 4, justifyContent: "space-between" } },
+          ["S", "M", "T", "W", "T", "F", "S"].map(function (lbl, dow) {
+            const on = props.reminderTimes && (props.reminderTimes.trainingDays || []).indexOf(dow) !== -1;
+            return h("button", {
+              key: dow,
+              onClick: function () { props.toggleTrainingDay(dow); },
+              className: "ex-action-btn",
+              style: Object.assign({ flex: 1, padding: "6px 0", fontSize: 12 }, on ? { background: "#1d4ed8", color: "#fff", borderColor: "#1d4ed8" } : {}),
+            }, lbl);
+          })
+        ),
+        h("p", { style: { fontSize: 11, color: "#737373", margin: "8px 0 0" } },
+          "Leave a time blank to skip that reminder. Training fires only on the selected days."),
+      ),
     ),
     h("div", { className: "panel", style: { marginBottom: 12, padding: "10px 14px", background: "#0a0a0a", border: "1px solid #404040", borderRadius: 8 } },
       h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
@@ -4254,7 +4509,7 @@ function NutritionTab(props) {
         });
       })
     ),
-    h(FoodSearchLog, { foodLog: props.foodLog, logFood: props.logFood, removeEntry: props.removeFoodLogEntry, updateGrams: props.updateFoodLogGrams, allFoods: props.allFoods, addCustomFood: props.addCustomFood }),
+    h(FoodSearchLog, { foodLog: props.foodLog, logFood: props.logFood, removeEntry: props.removeFoodLogEntry, updateGrams: props.updateFoodLogGrams, allFoods: props.allFoods, addCustomFood: props.addCustomFood, quickFoods: props.quickFoods }),
     !isFutureDay && h("button", { className: "complete-btn", style: { marginBottom: 16 }, onClick: props.completeNutritionDay },
       props.dayComplete ? "✓ Logged — Update" : "Complete This Day"),
     h(SupplementManager, { supplementList: props.supplementList, addSupplement: props.addSupplement, removeSupplement: props.removeSupplement, uiPrefs: props.uiPrefs, updateUiPrefs: props.updateUiPrefs }),
@@ -4283,6 +4538,31 @@ function NutritionTab(props) {
   );
 }
 
+// Derives a short quick-add list from the full food-log history (all dates for the active program):
+// the most-recently-logged distinct foods, each keeping its last grams + per100 so a tap re-logs
+// with sensible defaults. `count` (how often the food appears) is retained for future frequency
+// weighting. Pure — safe to call in render.
+function computeQuickAddFoods(foodLogByDate, limit) {
+  limit = limit || 8;
+  const byName = {};
+  Object.keys(foodLogByDate || {}).forEach(function (dateKey) {
+    (foodLogByDate[dateKey] || []).forEach(function (e) {
+      if (!e || !e.name) return;
+      const ts = parseInt(String(e.id).split("-")[0], 10) || 0;
+      const cur = byName[e.name];
+      if (!cur) {
+        byName[e.name] = { name: e.name, grams: e.grams, per100: e.per100 || null, count: 1, lastTs: ts };
+      } else {
+        cur.count += 1;
+        if (ts >= cur.lastTs) { cur.lastTs = ts; cur.grams = e.grams; cur.per100 = e.per100 || cur.per100; }
+      }
+    });
+  });
+  return Object.keys(byName).map(function (k) { return byName[k]; })
+    .sort(function (a, b) { return b.lastTs - a.lastTs; })
+    .slice(0, limit);
+}
+
 function FoodSearchLog(props) {
   const [query, setQuery] = useState("");
   const db = props.allFoods || FOOD_DB;
@@ -4291,6 +4571,19 @@ function FoodSearchLog(props) {
     : [];
   return h("div", { style: { marginBottom: 24 } },
     h("div", { className: "food-cat-title" }, "Log Anything Else"),
+    props.quickFoods && props.quickFoods.length > 0 && h("div", { style: { marginBottom: 12 } },
+      h("div", { style: { fontSize: 11, color: "#737373", marginBottom: 6 } }, "Quick add"),
+      h("div", { style: { display: "flex", flexWrap: "wrap", gap: 6 } },
+        props.quickFoods.map(function (qf) {
+          return h("button", {
+            key: qf.name,
+            className: "ex-action-btn",
+            style: { flex: "0 0 auto", padding: "6px 12px", fontSize: 13 },
+            onClick: function () { props.logFood(qf.name, qf.grams || 100, qf.per100); },
+          }, qf.name + (qf.grams ? " · " + qf.grams + "g" : ""));
+        })
+      )
+    ),
     h(BarcodeLogger, { logFood: props.logFood, addCustomFood: props.addCustomFood, allFoods: props.allFoods }),
     h("input", {
       type: "text", value: query, onChange: function (e) { setQuery(e.target.value); },
